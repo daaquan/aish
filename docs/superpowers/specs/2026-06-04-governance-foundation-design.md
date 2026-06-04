@@ -14,7 +14,7 @@ project-facing text is in English.
 
 | Topic | Decision |
 |-------|----------|
-| License | Apache-2.0 (permissive, OSI-approved, explicit patent grant) |
+| License | AGPL-3.0-only (OSI-approved copyleft; network-use source disclosure §13; express patent grant §11) |
 | Copyright | daaquan, 2026 |
 | Contributor sign-off | DCO (`Signed-off-by`, via `git commit -s`) |
 | Code of Conduct | Contributor Covenant 2.1 |
@@ -27,8 +27,9 @@ project-facing text is in English.
 
 ## Deliverables
 
-1. **`LICENSE`** — full Apache-2.0 text.
-2. **`NOTICE`** — copyright attribution line.
+1. **`LICENSE`** — full GNU AGPL-3.0 text.
+2. **`README.md`** — add SPDX `AGPL-3.0-only` line + short license + AGPL §13 (network
+   source-offer) note. Recommend per-source-file SPDX headers once code exists.
 3. **`CONTRIBUTING.md`**
    - English-only policy.
    - Workflow: branch off `main` → `type/short-desc` → one feature/PR → ≥1 review +
@@ -42,7 +43,7 @@ project-facing text is in English.
 5. **`.github/PULL_REQUEST_TEMPLATE.md`** — summary / motivation / test plan / checklist
    (DCO signed, Conventional Commit title, one feature, docs updated).
 6. **`.github/ISSUE_TEMPLATE/`** — `bug_report.md`, `feature_request.md`, `config.yml`.
-7. **`CLAUDE.md`** (extend existing) — add: license=Apache-2.0, DCO sign-off requirement,
+7. **`CLAUDE.md`** (extend existing) — add: license=AGPL-3.0-only, DCO sign-off requirement,
    branch naming, squash policy. Keep Build/Architecture sections `TBD`.
 8. **Branch-protection note** — documented in `CONTRIBUTING.md` with the `gh api` command;
    applied manually by the maintainer (not automated here).
@@ -56,7 +57,7 @@ project-facing text is in English.
 
 ## Success Criteria
 
-- Repo carries a valid Apache-2.0 license discoverable by GitHub.
+- Repo carries a valid AGPL-3.0-only license discoverable by GitHub.
 - A new contributor can read `CONTRIBUTING.md` and produce a correctly-formatted,
   signed, single-feature PR without asking questions.
 - `CLAUDE.md` reflects the same rules so future Claude sessions follow them.
