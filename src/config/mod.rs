@@ -113,17 +113,21 @@ impl Config {
     /// Commented YAML template for `aish config init`.
     pub fn template() -> &'static str {
         r#"# aish configuration (~/.aish/config.yaml)
+#
+# Only providers you leave uncommented are loaded. The default template keeps
+# Anthropic and local Ollama available, while other example providers are
+# commented so unset optional API keys never block config loading.
 providers:
   anthropic: { api_key: ${ANTHROPIC_API_KEY} }
-  openai:    { api_key: ${OPENAI_API_KEY} }
-  google:    { api_key: ${GOOGLE_API_KEY} }
   ollama:    { base_url: http://localhost:11434/v1 }
-  kilo:      { api_key: ${KILO_API_KEY}, base_url: https://gateway.kilo.example/v1 }
+  # openai: { api_key: ${OPENAI_API_KEY} }
+  # google: { api_key: ${GOOGLE_API_KEY} }
+  # kilo:   { api_key: ${KILO_API_KEY}, base_url: https://gateway.kilo.example/v1 }
 
 models:
   default: { provider: anthropic, model: claude-opus-4-8 }
-  fast:    { provider: openai,    model: gpt-5-mini }
   local:   { provider: ollama,    model: qwen3-coder }
+  # fast:   { provider: openai,   model: gpt-5-mini }
 
 commit:
   style: conventional
@@ -228,6 +232,9 @@ commit: { style: conventional, language: en, model: default }
         let cfg = Config::from_yaml(Config::template()).unwrap();
         assert_eq!(cfg.models["default"].provider, "anthropic");
         assert!(cfg.providers.contains_key("ollama"));
+        assert!(!cfg.providers.contains_key("openai"));
+        assert!(!cfg.providers.contains_key("google"));
+        assert!(!cfg.providers.contains_key("kilo"));
         assert_eq!(cfg.commit.model, "default");
     }
 
@@ -240,6 +247,7 @@ commit: { style: conventional, language: en, model: default }
         let cfg = Config::from_yaml(Config::template()).unwrap();
         assert_eq!(cfg.commit.model, "default");
         assert!(cfg.providers.contains_key("ollama"));
+        assert!(!cfg.providers.contains_key("openai"));
         assert_eq!(cfg.models["default"].provider, "anthropic");
     }
 }
