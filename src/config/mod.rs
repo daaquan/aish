@@ -93,6 +93,47 @@ impl Config {
     }
 }
 
+impl Config {
+    /// Commented YAML template for `aish config init`.
+    pub fn template() -> &'static str {
+        r#"# aish configuration (~/.aish/config.yaml)
+providers:
+  anthropic: { api_key: ${ANTHROPIC_API_KEY} }
+  openai:    { api_key: ${OPENAI_API_KEY} }
+  google:    { api_key: ${GOOGLE_API_KEY} }
+  ollama:    { base_url: http://localhost:11434/v1 }
+  kilo:      { api_key: ${KILO_API_KEY}, base_url: https://gateway.kilo.example/v1 }
+
+models:
+  default: { provider: anthropic, model: claude-opus-4-8 }
+  fast:    { provider: openai,    model: gpt-5-mini }
+  local:   { provider: ollama,    model: qwen3-coder }
+
+commit:
+  style: conventional
+  language: en
+  model: default
+"#
+    }
+
+    /// Write the template to `path`. Refuses to overwrite unless `force`.
+    pub fn write_template(path: &std::path::Path, force: bool) -> std::io::Result<()> {
+        if path.exists() && !force {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::AlreadyExists,
+                format!(
+                    "{} already exists (use --force to overwrite)",
+                    path.display()
+                ),
+            ));
+        }
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, Self::template())
+    }
+}
+
 /// Expand `${VAR}` occurrences. Missing variable → error naming the var (never its value).
 fn expand_env(input: &str) -> Result<String, ConfigError> {
     let mut out = String::with_capacity(input.len());
@@ -158,5 +199,17 @@ commit: { style: conventional, language: en, model: default }
 "#;
         let err = Config::from_yaml(yaml).unwrap_err().to_string();
         assert!(err.contains("AISH_DOES_NOT_EXIST"));
+    }
+
+    #[test]
+    fn template_parses_as_valid_config_when_env_present() {
+        std::env::set_var("ANTHROPIC_API_KEY", "a");
+        std::env::set_var("OPENAI_API_KEY", "o");
+        std::env::set_var("GOOGLE_API_KEY", "g");
+        std::env::set_var("KILO_API_KEY", "k");
+        let cfg = Config::from_yaml(Config::template()).unwrap();
+        assert_eq!(cfg.commit.model, "default");
+        assert!(cfg.providers.contains_key("ollama"));
+        assert_eq!(cfg.models["default"].provider, "anthropic");
     }
 }
