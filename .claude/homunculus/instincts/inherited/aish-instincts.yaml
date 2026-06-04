@@ -1,0 +1,328 @@
+# Instincts generated from https://github.com/daaquan/aish
+# Generated: 2026-06-04T11:05:39.606Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: aish-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: docs, chore, fix
+
+## Evidence
+
+- 3 commits analyzed
+- Detected conventional commit pattern
+- Examples: docs: add governance foundation design spec, chore: add project governance foundation
+
+---
+id: aish-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Commit Length
+
+## Action
+
+Keep commit messages concise (~44 characters)
+
+## Evidence
+
+- Average commit message length: 44 chars
+- Based on 3 commits
+
+---
+id: aish-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Naming Files
+
+## Action
+
+Use snake_case naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: snake_case
+
+---
+id: aish-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: aish-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: aish-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: aish-workflow-project-governance-foundation-update
+trigger: "when doing project governance foundation update"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Workflow Project Governance Foundation Update
+
+## Action
+
+Follow the project-governance-foundation-update workflow:
+1. Add or update LICENSE file
+2. Add or update CODE_OF_CONDUCT.md
+3. Add or update CONTRIBUTING.md
+4. Add or update PR and issue templates in .github/ISSUE_TEMPLATE/ and .github/PULL_REQUEST_TEMPLATE.md
+5. Update README.md and CLAUDE.md to reflect governance changes
+6. Add or update governance design spec in docs/superpowers/specs/
+7. Optionally add or update workflow files in .github/workflows/
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: LICENSE, CODE_OF_CONDUCT.md, CONTRIBUTING.md
+
+---
+id: aish-instinct-file-naming
+trigger: "When creating or renaming a file in the codebase"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct File Naming
+
+## Action
+
+Name the file using snake_case
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.files
+
+---
+id: aish-instinct-function-naming
+trigger: "When defining a function"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Function Naming
+
+## Action
+
+Use camelCase for function names
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.functions
+
+---
+id: aish-instinct-class-naming
+trigger: "When defining a class"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Class Naming
+
+## Action
+
+Use PascalCase for class names
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.classes
+
+---
+id: aish-instinct-constant-naming
+trigger: "When defining a constant"
+confidence: 0.85
+domain: code-style
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constant names
+
+## Evidence
+
+- Pattern in codeStyle.namingConventions.constants
+
+---
+id: aish-instinct-import-style
+trigger: "When importing modules in TypeScript files"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Import Style
+
+## Action
+
+Use relative import paths
+
+## Evidence
+
+- Pattern in codeStyle.importStyle
+
+---
+id: aish-instinct-export-style
+trigger: "When exporting modules or functions"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- Pattern in codeStyle.exportStyle
+
+---
+id: aish-instinct-commit-format
+trigger: "When writing a commit message"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Commit Format
+
+## Action
+
+Use conventional commit format with prefixes: docs, chore, fix
+
+## Evidence
+
+- Pattern in commits.prefixes
+- Examples: 'docs: add governance foundation design spec', 'chore: add project governance foundation', 'fix: address codex review of governance foundation'
+
+---
+id: aish-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Commit Length
+
+## Action
+
+Keep commit message length around 44 characters on average
+
+## Evidence
+
+- Pattern in commits.averageLength
+
+---
+id: aish-instinct-project-governance-foundation-update
+trigger: "When someone wants to set up or revise project governance policies and documentation"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Project Governance Foundation Update
+
+## Action
+
+Add or update LICENSE, CODE_OF_CONDUCT.md, CONTRIBUTING.md, .github templates, README.md, CLAUDE.md, governance design spec, and optionally workflow files as per the workflow sequence
+
+## Evidence
+
+- Workflow: project-governance-foundation-update
+- Files: LICENSE, CODE_OF_CONDUCT.md, CONTRIBUTING.md, .github/ISSUE_TEMPLATE/*, .github/PULL_REQUEST_TEMPLATE.md, .github/workflows/*.yml, README.md, CLAUDE.md, docs/superpowers/specs/*governance-foundation-design.md
+
