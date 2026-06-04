@@ -26,13 +26,11 @@ Early scaffold. No application code, build system, or tests exist yet. This file
 
 ## Build & Test
 
-_To be filled once a build system is chosen._
-
 ```
-# build:  TBD
-# test:   TBD
-# lint:   TBD
-# single test: TBD
+# build:  cargo build
+# test:   cargo test --all
+# lint:   cargo clippy --all-targets -- -D warnings && cargo fmt --all -- --check
+# single test: cargo test <name> -- --test-threads=1
 ```
 
 ## Architecture
