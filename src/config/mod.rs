@@ -11,8 +11,6 @@ pub enum ConfigError {
     NotFound(PathBuf),
     #[error("invalid config: {0}")]
     Parse(String),
-    #[error("environment variable {0} referenced in config is not set")]
-    MissingEnv(String),
     #[error("io error reading {0}: {1}")]
     Io(PathBuf, String),
 }
@@ -89,7 +87,25 @@ impl Config {
 
     pub fn from_yaml(raw: &str) -> Result<Self, ConfigError> {
         let expanded = expand_env(raw)?;
-        serde_yaml::from_str(&expanded).map_err(|e| ConfigError::Parse(e.to_string()))
+        let mut cfg: Config =
+            serde_yaml::from_str(&expanded).map_err(|e| ConfigError::Parse(e.to_string()))?;
+        for p in cfg.providers.values_mut() {
+            if p.api_key
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(str::is_empty)
+            {
+                p.api_key = None;
+            }
+            if p.base_url
+                .as_deref()
+                .map(str::trim)
+                .is_some_and(str::is_empty)
+            {
+                p.base_url = None;
+            }
+        }
+        Ok(cfg)
     }
 }
 
@@ -134,7 +150,8 @@ commit:
     }
 }
 
-/// Expand `${VAR}` occurrences. Missing variable → error naming the var (never its value).
+/// Expand `${VAR}` occurrences. Missing variable → empty string (validated later when the
+/// provider is actually used). Unterminated `${` → Parse error.
 fn expand_env(input: &str) -> Result<String, ConfigError> {
     let mut out = String::with_capacity(input.len());
     let mut rest = input;
@@ -145,7 +162,7 @@ fn expand_env(input: &str) -> Result<String, ConfigError> {
             .find('}')
             .ok_or_else(|| ConfigError::Parse("unterminated ${ in config".into()))?;
         let var = &after[..end];
-        let val = std::env::var(var).map_err(|_| ConfigError::MissingEnv(var.to_string()))?;
+        let val = std::env::var(var).unwrap_or_default(); // missing var → empty; validated later when the provider is actually used
         out.push_str(&val);
         rest = &after[end + 1..];
     }
@@ -189,16 +206,29 @@ commit: { style: conventional, language: en, model: default }
     }
 
     #[test]
-    fn missing_env_var_errors_with_name_not_value() {
-        let yaml = r#"
-providers:
-  openai: { api_key: ${AISH_DOES_NOT_EXIST} }
-models:
-  default: { provider: openai, model: gpt-5-mini }
-commit: { style: conventional, language: en, model: default }
-"#;
-        let err = Config::from_yaml(yaml).unwrap_err().to_string();
-        assert!(err.contains("AISH_DOES_NOT_EXIST"));
+    fn missing_env_var_expands_to_empty_not_error() {
+        std::env::remove_var("AISH_UNSET_XYZ_1");
+        let out = super::expand_env("key: ${AISH_UNSET_XYZ_1}").unwrap();
+        assert_eq!(out, "key: ");
+    }
+
+    #[test]
+    fn empty_expanded_key_normalized_to_none() {
+        std::env::remove_var("AISH_UNSET_XYZ_2");
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: ${AISH_UNSET_XYZ_2} }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }",
+        )
+        .unwrap();
+        assert!(cfg.providers["openai"].api_key.is_none());
+    }
+
+    #[test]
+    fn template_loads_even_when_provider_keys_unset() {
+        // The P1 regression: template must load without every key being set.
+        let cfg = Config::from_yaml(Config::template()).unwrap();
+        assert_eq!(cfg.models["default"].provider, "anthropic");
+        assert!(cfg.providers.contains_key("ollama"));
+        assert_eq!(cfg.commit.model, "default");
     }
 
     #[test]

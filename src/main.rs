@@ -129,15 +129,21 @@ async fn run_commit(
         print!("Accept? [Y/n] ");
         std::io::stdout().flush()?;
         let mut input = String::new();
-        std::io::stdin().read_line(&mut input)?;
-        let answer = input.trim().to_lowercase();
-        if answer.is_empty() || answer == "y" || answer == "yes" {
-            git::commit(&cwd, &message, signoff)?;
-            println!("Committed.");
-            "applied"
-        } else {
-            println!("Aborted.");
+        let n = std::io::stdin().read_line(&mut input)?;
+        if n == 0 {
+            // EOF / non-interactive (e.g. </dev/null): do not commit.
+            println!("Aborted (no input).");
             "rejected"
+        } else {
+            let answer = input.trim().to_lowercase();
+            if answer.is_empty() || answer == "y" || answer == "yes" {
+                git::commit(&cwd, &message, signoff)?;
+                println!("Committed.");
+                "applied"
+            } else {
+                println!("Aborted.");
+                "rejected"
+            }
         }
     };
 

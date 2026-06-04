@@ -84,18 +84,21 @@ impl Provider for Gemini {
         if !system.is_empty() {
             body["systemInstruction"] = serde_json::json!({ "parts": [ { "text": system } ] });
         }
+        if let Some(t) = req.temperature {
+            body["generationConfig"] = serde_json::json!({ "temperature": t });
+        }
 
         let url = format!(
-            "{}/v1beta/models/{}:generateContent?key={}",
-            self.base_url, req.model, self.api_key
+            "{}/v1beta/models/{}:generateContent",
+            self.base_url, req.model
         );
         let resp = self
             .client
             .post(url)
+            .header("x-goog-api-key", &self.api_key)
             .json(&body)
             .send()
             .await
-            // Strip the URL: it carries the api_key in its query string.
             .map_err(|e| {
                 ProviderError::Request(format!("request to Gemini failed: {}", e.without_url()))
             })?;
@@ -139,8 +142,10 @@ mod tests {
 
     #[tokio::test]
     async fn parses_candidate_text() {
+        use wiremock::matchers::header;
         let server = MockServer::start().await;
         Mock::given(method("POST"))
+            .and(header("x-goog-api-key", "gk"))
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
                 "candidates": [ { "content": { "parts": [ { "text": "chore: bump deps" } ] } } ],
                 "usageMetadata": { "promptTokenCount": 12, "candidatesTokenCount": 5 }
@@ -160,6 +165,41 @@ mod tests {
 
         assert_eq!(resp.content, "chore: bump deps");
         assert_eq!(resp.usage.unwrap().prompt_tokens, 12);
+    }
+
+    #[tokio::test]
+    async fn sends_temperature_in_generation_config() {
+        use wiremock::matchers::body_partial_json;
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(body_partial_json(
+                serde_json::json!({ "generationConfig": {} }),
+            ))
+            .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                "candidates": [ { "content": { "parts": [ { "text": "chore: x" } ] } } ]
+            })))
+            .mount(&server)
+            .await;
+        let p = Gemini::with_base(server.uri(), "gk".into());
+        let resp = p
+            .chat(ChatRequest {
+                model: "gemini-2.5-pro".into(),
+                messages: vec![Message::user("d")],
+                temperature: Some(0.2),
+            })
+            .await
+            .unwrap();
+        assert_eq!(resp.content, "chore: x");
+        // Also verify the temperature value is correct in the sent body.
+        let reqs = server.received_requests().await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&reqs[0].body).unwrap();
+        let temp = body["generationConfig"]["temperature"]
+            .as_f64()
+            .expect("generationConfig.temperature must be a number");
+        assert!(
+            (temp - 0.2_f64).abs() < 1e-4,
+            "expected temperature ~0.2, got {temp}"
+        );
     }
 
     #[tokio::test]

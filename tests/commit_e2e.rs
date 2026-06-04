@@ -56,6 +56,43 @@ commit: { style: conventional, language: en, model: default }
 }
 
 #[test]
+fn commit_aborts_on_eof_without_apply() {
+    let repo = tempdir().unwrap();
+    let cfg = tempdir().unwrap();
+    let cfg_path = cfg.path().join("config.yaml");
+    std::fs::write(&cfg_path, "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: gpt-5-mini }\ncommit: { style: conventional, language: en, model: default }\n").unwrap();
+    git(repo.path(), &["init", "-q"]);
+    git(repo.path(), &["config", "user.email", "t@e.st"]);
+    git(repo.path(), &["config", "user.name", "t"]);
+    git(repo.path(), &["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.path().join("a.txt"), "hi").unwrap();
+    git(repo.path(), &["add", "a.txt"]);
+
+    Command::cargo_bin("aish")
+        .unwrap()
+        .current_dir(repo.path())
+        .env("AISH_CONFIG", &cfg_path)
+        .env("AISH_PROVIDER", "mock")
+        .env("AISH_MOCK_REPLY", "feat: should not commit")
+        .env("HOME", cfg.path())
+        .args(["commit"])
+        .write_stdin("") // EOF immediately
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Aborted"));
+
+    let log = Std::new("git")
+        .current_dir(repo.path())
+        .args(["log", "--oneline"])
+        .output()
+        .unwrap();
+    assert!(
+        !String::from_utf8_lossy(&log.stdout).contains("should not commit"),
+        "must not have committed on EOF"
+    );
+}
+
+#[test]
 fn commit_reports_nothing_staged() {
     let repo = tempdir().unwrap();
     let cfg = tempdir().unwrap();
