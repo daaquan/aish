@@ -2,6 +2,8 @@
 use async_trait::async_trait;
 use thiserror::Error;
 
+use crate::config::resolve::Resolved;
+
 pub mod anthropic;
 pub mod gemini;
 pub mod mock;
@@ -72,6 +74,96 @@ pub enum ProviderError {
 #[async_trait]
 pub trait Provider: Send + Sync {
     async fn chat(&self, req: ChatRequest) -> Result<ChatResponse, ProviderError>;
+}
+
+/// Build a provider from a resolved model. `provider_name` selects the API shape:
+/// `anthropic` and `google`/`gemini` use native adapters; everything else
+/// (openai, ollama, kilo, …) is treated as OpenAI-compatible and uses `base_url`
+/// (defaulting to the public OpenAI endpoint when absent).
+pub fn build_provider(
+    provider_name: &str,
+    r: &Resolved,
+) -> Result<Box<dyn Provider>, ProviderError> {
+    let pc = r.provider;
+    match provider_name {
+        "anthropic" => {
+            let key = pc.api_key.clone().ok_or_else(|| {
+                ProviderError::Request("anthropic provider missing api_key".into())
+            })?;
+            Ok(Box::new(anthropic::Anthropic::new(key)))
+        }
+        "google" | "gemini" => {
+            let key = pc
+                .api_key
+                .clone()
+                .ok_or_else(|| ProviderError::Request("google provider missing api_key".into()))?;
+            Ok(Box::new(gemini::Gemini::new(key)))
+        }
+        _ => {
+            let base = pc
+                .base_url
+                .clone()
+                .unwrap_or_else(|| "https://api.openai.com/v1".into());
+            Ok(Box::new(openai::OpenAiCompat::new(
+                base,
+                pc.api_key.clone(),
+            )))
+        }
+    }
+}
+
+#[cfg(test)]
+mod factory_tests {
+    use super::*;
+    use crate::config::resolve::resolve_model;
+    use crate::config::Config;
+
+    fn cfg() -> Config {
+        Config::from_yaml(
+            r#"
+providers:
+  anthropic: { api_key: sk-a }
+  openai: { api_key: sk-o }
+  ollama: { base_url: http://localhost:11434/v1 }
+  google: { api_key: gk }
+models:
+  a: { provider: anthropic, model: claude-opus-4-8 }
+  o: { provider: openai, model: gpt-5-mini }
+  l: { provider: ollama, model: qwen3-coder }
+  g: { provider: google, model: gemini-2.5-pro }
+commit: { style: conventional, language: en, model: o }
+"#,
+        )
+        .unwrap()
+    }
+
+    #[test]
+    fn builds_each_provider_kind() {
+        let c = cfg();
+        for alias in ["a", "o", "l", "g"] {
+            let r = resolve_model(&c, alias).unwrap();
+            assert!(
+                build_provider(&r.provider_name, &r).is_ok(),
+                "failed to build provider for alias {alias}"
+            );
+        }
+    }
+
+    #[test]
+    fn provider_missing_key_errors() {
+        let bad = Config::from_yaml(
+            r#"
+providers:
+  anthropic: {}
+models:
+  a: { provider: anthropic, model: claude-opus-4-8 }
+commit: { style: conventional, language: en, model: a }
+"#,
+        )
+        .unwrap();
+        let r = resolve_model(&bad, "a").unwrap();
+        assert!(build_provider("anthropic", &r).is_err());
+    }
 }
 
 #[cfg(test)]
