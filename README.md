@@ -4,6 +4,20 @@
 
 > Early scaffold. No application code yet — see [`docs/superpowers/specs/`](docs/superpowers/specs/) for design specs.
 
+## Usage (v0.1)
+
+```bash
+# Generate a commit message from staged changes (interactive confirm)
+aish commit
+
+# Generate and apply immediately, with DCO sign-off
+aish commit --apply --signoff
+```
+
+> **Testing:** setting `AISH_PROVIDER=mock` makes `aish commit` return a canned
+> message (`$AISH_MOCK_REPLY`) without calling any provider — used by the test
+> suite and useful for offline/CI smoke checks.
+
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
