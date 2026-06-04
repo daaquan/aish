@@ -79,13 +79,13 @@ merge. Because we squash-merge, maintainers ensure the final squash commit also 
      (`git diff main...HEAD` shows the full change set).
    - Explain the motivation.
    - Include a **test plan** (how you verified it; mark TODOs if any).
-5. **Review & merge.** A PR merges once it has **≥1 approving review** (and **green CI**,
-   once CI workflows exist). We **squash merge** so `main` keeps one commit per feature.
+5. **Merge.** A PR merges once it has **green CI** (once CI workflows exist).
+   We **squash merge** so `main` keeps one commit per feature.
    Keep PRs small and reviewable.
 
 ## Branch protection (maintainer setup)
 
-`main` is protected: squash-only merges, ≥1 required review, and no force-pushes.
+`main` is protected: squash-only merges and no force-pushes.
 Maintainers apply this once. The GitHub branch-protection API expects a JSON body with
 nested objects, so pass it via `--input` (dotted `-f` keys do **not** nest correctly):
 
@@ -94,7 +94,7 @@ gh api -X PUT repos/{owner}/{repo}/branches/main/protection --input - <<'JSON'
 {
   "required_status_checks": null,
   "enforce_admins": true,
-  "required_pull_request_reviews": { "required_approving_review_count": 1 },
+  "required_pull_request_reviews": null,
   "restrictions": null,
   "allow_force_pushes": false
 }
