@@ -7,13 +7,16 @@
 ## Usage (v0.1)
 
 ```bash
-aish config init        # write ~/.aish/config.yaml template
-aish providers list     # show configured providers
-aish models list        # show model aliases
-git add .
-aish commit             # suggest a message, then [Y/n]
-aish commit --apply     # generate and commit without prompting
+# Generate a commit message from staged changes (interactive confirm)
+aish commit
+
+# Generate and apply immediately, with DCO sign-off
+aish commit --apply --signoff
 ```
+
+> **Testing:** setting `AISH_PROVIDER=mock` makes `aish commit` return a canned
+> message (`$AISH_MOCK_REPLY`) without calling any provider — used by the test
+> suite and useful for offline/CI smoke checks.
 
 ## Contributing
 
