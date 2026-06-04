@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: AGPL-3.0-only
+pub mod resolve;
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 use std::path::PathBuf;
