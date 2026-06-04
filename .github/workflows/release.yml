@@ -1,0 +1,74 @@
+name: release
+
+# Build prebuilt binaries for every platform the installer (openaish.com/install.sh)
+# knows about, and attach them to the GitHub release. Asset names MUST match the
+# installer's `aish-${arch}-${os}` scheme.
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing tag to (re)build and upload assets for"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.asset }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            asset: aish-x86_64-linux
+          - os: ubuntu-latest
+            target: aarch64-unknown-linux-gnu
+            asset: aish-aarch64-linux
+            linker: gcc-aarch64-linux-gnu
+          - os: macos-13
+            target: x86_64-apple-darwin
+            asset: aish-x86_64-darwin
+          - os: macos-14
+            target: aarch64-apple-darwin
+            asset: aish-aarch64-darwin
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install cross linker (aarch64 linux)
+        if: matrix.linker != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.linker }}
+          mkdir -p .cargo
+          cat >> .cargo/config.toml <<'EOF'
+          [target.aarch64-unknown-linux-gnu]
+          linker = "aarch64-linux-gnu-gcc"
+          EOF
+
+      - name: Build
+        run: cargo build --release --locked --target ${{ matrix.target }}
+
+      - name: Stage asset
+        shell: bash
+        run: |
+          cp "target/${{ matrix.target }}/release/aish" "${{ matrix.asset }}"
+          chmod +x "${{ matrix.asset }}"
+
+      - name: Resolve tag
+        id: tag
+        shell: bash
+        run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release upload "${{ steps.tag.outputs.tag }}" "${{ matrix.asset }}" --clobber
