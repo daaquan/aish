@@ -95,7 +95,10 @@ impl Provider for Gemini {
             .json(&body)
             .send()
             .await
-            .map_err(|e| ProviderError::Request(e.to_string()))?;
+            // Strip the URL: it carries the api_key in its query string.
+            .map_err(|e| {
+                ProviderError::Request(format!("request to Gemini failed: {}", e.without_url()))
+            })?;
 
         match resp.status().as_u16() {
             200 => {}
@@ -157,5 +160,23 @@ mod tests {
 
         assert_eq!(resp.content, "chore: bump deps");
         assert_eq!(resp.usage.unwrap().prompt_tokens, 12);
+    }
+
+    #[tokio::test]
+    async fn request_error_does_not_leak_api_key() {
+        // Point at a closed port so the request fails at the transport layer.
+        let p = Gemini::with_base("http://127.0.0.1:1".into(), "SUPER_SECRET_KEY".into());
+        let err = p
+            .chat(ChatRequest {
+                model: "gemini-2.5-pro".into(),
+                messages: vec![Message::user("x")],
+                temperature: None,
+            })
+            .await
+            .unwrap_err();
+        assert!(
+            !err.to_string().contains("SUPER_SECRET_KEY"),
+            "api_key leaked in error: {err}"
+        );
     }
 }
