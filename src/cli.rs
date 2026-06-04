@@ -31,6 +31,9 @@ pub enum Command {
         /// Override output language.
         #[arg(long)]
         lang: Option<String>,
+        /// Add a DCO Signed-off-by trailer to the commit.
+        #[arg(long)]
+        signoff: bool,
     },
     /// Write a commented config template to ~/.aish/config.yaml.
     Config {

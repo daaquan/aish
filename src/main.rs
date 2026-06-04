@@ -65,7 +65,8 @@ async fn run(cli: Cli) -> Result<()> {
             model,
             style,
             lang,
-        } => run_commit(apply, model, style, lang).await,
+            signoff,
+        } => run_commit(apply, model, style, lang, signoff).await,
     }
 }
 
@@ -74,6 +75,7 @@ async fn run_commit(
     model: Option<String>,
     style: Option<String>,
     lang: Option<String>,
+    signoff: bool,
 ) -> Result<()> {
     let cfg = Config::load()?;
     let cwd = std::env::current_dir()?;
@@ -120,7 +122,7 @@ async fn run_commit(
     println!("\nSuggested commit:\n\n{message}\n");
 
     let decision = if apply {
-        git::commit(&cwd, &message)?;
+        git::commit(&cwd, &message, signoff)?;
         println!("Committed.");
         "applied"
     } else {
@@ -130,7 +132,7 @@ async fn run_commit(
         std::io::stdin().read_line(&mut input)?;
         let answer = input.trim().to_lowercase();
         if answer.is_empty() || answer == "y" || answer == "yes" {
-            git::commit(&cwd, &message)?;
+            git::commit(&cwd, &message, signoff)?;
             println!("Committed.");
             "applied"
         } else {

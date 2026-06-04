@@ -43,8 +43,13 @@ pub fn staged_diff(dir: &Path) -> Result<String, GitError> {
 }
 
 /// Create a commit with the given message.
-pub fn commit(dir: &Path, message: &str) -> Result<(), GitError> {
-    let out = run(dir, &["commit", "-m", message])?;
+/// Pass `signoff: true` to append a DCO `Signed-off-by` trailer (`git commit -s`).
+pub fn commit(dir: &Path, message: &str, signoff: bool) -> Result<(), GitError> {
+    let mut args = vec!["commit", "-m", message];
+    if signoff {
+        args.push("-s");
+    }
+    let out = run(dir, &args)?;
     if !out.status.success() {
         return Err(GitError::Failed(
             String::from_utf8_lossy(&out.stderr).into_owned(),
@@ -106,12 +111,30 @@ mod tests {
             .args(["add", "a.txt"])
             .status()
             .unwrap();
-        commit(dir.path(), "feat: add a").unwrap();
+        commit(dir.path(), "feat: add a", false).unwrap();
         let log = Command::new("git")
             .current_dir(dir.path())
             .args(["log", "--oneline"])
             .output()
             .unwrap();
         assert!(String::from_utf8_lossy(&log.stdout).contains("feat: add a"));
+    }
+
+    #[test]
+    fn commit_with_signoff_adds_trailer() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("a.txt"), "hello").unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["add", "a.txt"])
+            .status()
+            .unwrap();
+        commit(dir.path(), "feat: add a", true).unwrap();
+        let log = Command::new("git")
+            .current_dir(dir.path())
+            .args(["log", "-1", "--format=%B"])
+            .output()
+            .unwrap();
+        assert!(String::from_utf8_lossy(&log.stdout).contains("Signed-off-by:"));
     }
 }

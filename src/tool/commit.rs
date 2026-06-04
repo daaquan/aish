@@ -55,7 +55,12 @@ pub fn postprocess(raw: &str) -> String {
             s = &s[..idx];
         }
     }
-    s.trim().to_string()
+    let result = s.trim();
+    // A residual fence marker means the input was just fences / malformed — reject it.
+    if result.contains("```") || result.is_empty() {
+        return String::new();
+    }
+    result.to_string()
 }
 
 #[cfg(test)]
@@ -86,6 +91,13 @@ mod tests {
     #[test]
     fn rejects_empty_output() {
         assert!(postprocess("   \n  ").is_empty());
+    }
+
+    #[test]
+    fn bare_fence_becomes_empty() {
+        assert!(postprocess("```").is_empty());
+        assert!(postprocess("``````").is_empty());
+        assert!(postprocess("```\n```").is_empty());
     }
 
     #[test]
