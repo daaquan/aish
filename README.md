@@ -4,6 +4,17 @@
 
 > Early scaffold. No application code yet — see [`docs/superpowers/specs/`](docs/superpowers/specs/) for design specs.
 
+## Usage (v0.1)
+
+```bash
+aish config init        # write ~/.aish/config.yaml template
+aish providers list     # show configured providers
+aish models list        # show model aliases
+git add .
+aish commit             # suggest a message, then [Y/n]
+aish commit --apply     # generate and commit without prompting
+```
+
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
