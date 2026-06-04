@@ -21,7 +21,7 @@ Early scaffold. No application code, build system, or tests exist yet. This file
 - **Conventional Commits** for messages: `<type>: <description>` where type is one of `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`.
 - **DCO sign-off required.** Every commit needs a `Signed-off-by` line — always commit with `git commit -s`.
 - **PR description** must summarize all commits in the branch (not just the latest) and include a test plan. Use `git diff main...HEAD` to review the full change set.
-- **Merge:** squash merge into `main` after ≥1 approving review + green CI. `main` is protected (no force-push). Keep PRs small and reviewable; split large work into stacked feature PRs.
+- **Merge:** squash merge into `main` after green CI. `main` is protected (no force-push). Keep PRs small and reviewable; split large work into stacked feature PRs.
 - See `CONTRIBUTING.md` for the full contributor guide and `CODE_OF_CONDUCT.md`.
 
 ## Build & Test
