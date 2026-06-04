@@ -1,0 +1,517 @@
+# Instincts generated from https://github.com/daaquan/aish
+# Generated: 2026-06-04T15:53:39.692Z
+# Version: 2.0
+# NOTE: This file supplements (does not replace) any existing curated instincts.
+# High-confidence manually curated instincts should be preserved alongside these.
+
+---
+id: aish-commit-conventional
+trigger: "when writing a commit message"
+confidence: 0.85
+domain: git
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Commit Conventional
+
+## Action
+
+Use conventional commit format with prefixes: feat, chore, test, fix
+
+## Evidence
+
+- 16 commits analyzed
+- Detected conventional commit pattern
+- Examples: chore: scaffold aish Rust crate and CI, feat: add config structs, loading, and env-var expansion
+
+---
+id: aish-commit-length
+trigger: "when writing a commit message"
+confidence: 0.6
+domain: git
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Commit Length
+
+## Action
+
+Keep commit messages concise (~49 characters)
+
+## Evidence
+
+- Average commit message length: 49 chars
+- Based on 16 commits
+
+---
+id: aish-naming-files
+trigger: "when creating a new file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Naming Files
+
+## Action
+
+Use camelCase naming convention
+
+## Evidence
+
+- Analyzed file naming patterns in repository
+- Dominant pattern: camelCase
+
+---
+id: aish-import-relative
+trigger: "when importing modules"
+confidence: 0.75
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Import Relative
+
+## Action
+
+Use relative imports for project files
+
+## Evidence
+
+- Import analysis shows relative import pattern
+- Example: import { x } from '../lib/x'
+
+---
+id: aish-export-style
+trigger: "when exporting from a module"
+confidence: 0.7
+domain: code-style
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Export Style
+
+## Action
+
+Prefer named exports
+
+## Evidence
+
+- Export pattern analysis
+- Dominant style: named
+
+---
+id: aish-test-separate
+trigger: "when writing tests"
+confidence: 0.8
+domain: testing
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Test Separate
+
+## Action
+
+Place tests in the tests/ or __tests__/ directory, mirroring src structure
+
+## Evidence
+
+- Separate test directory pattern detected
+- Tests live in dedicated test folders
+
+---
+id: aish-workflow-feature-development
+trigger: "when implementing a new feature"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Workflow Feature Development
+
+## Action
+
+Follow the feature-development workflow:
+1. Add feature implementation
+2. Add tests for feature
+3. Update documentation
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~28x per month
+- Files: **/*.test.*
+
+---
+id: aish-workflow-add-provider-adapter
+trigger: "when doing add provider adapter"
+confidence: 0.65
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Workflow Add Provider Adapter
+
+## Action
+
+Follow the add-provider-adapter workflow:
+1. Create or update src/provider/{provider}.rs with the new provider implementation.
+2. Update src/provider/mod.rs to register or expose the new provider.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~3x per month
+- Files: src/provider/{provider}.rs, src/provider/mod.rs
+
+---
+id: aish-workflow-extend-config-logic
+trigger: "when doing extend config logic"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Workflow Extend Config Logic
+
+## Action
+
+Follow the extend-config-logic workflow:
+1. Update src/config/mod.rs with new structs, logic, or loading mechanisms.
+2. Optionally create or update src/config/{feature}.rs for specific config features (e.g., resolve.rs).
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/config/mod.rs, src/config/resolve.rs
+
+---
+id: aish-workflow-add-tool-or-extend-tooling
+trigger: "when doing add tool or extend tooling"
+confidence: 0.6
+domain: workflow
+source: repo-analysis
+source_repo: https://github.com/daaquan/aish
+---
+
+# Aish Workflow Add Tool Or Extend Tooling
+
+## Action
+
+Follow the add-tool-or-extend-tooling workflow:
+1. Create or update src/tool/{tool}.rs with the tool's logic.
+2. Update src/tool/mod.rs to register or expose the new tool.
+
+## Evidence
+
+- Workflow detected from commit patterns
+- Frequency: ~2x per month
+- Files: src/tool/{tool}.rs, src/tool/mod.rs
+
+---
+id: aish-instinct-file-naming
+trigger: "When creating a new source file"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct File Naming
+
+## Action
+
+Name the file using camelCase (e.g., providerAdapter.rs)
+
+## Evidence
+
+- Pattern in src/provider/mod.rs
+- Naming conventions in codeStyle
+
+---
+id: aish-instinct-function-naming
+trigger: "When defining a new function"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Function Naming
+
+## Action
+
+Use camelCase for function names
+
+## Evidence
+
+- Naming conventions in codeStyle
+
+---
+id: aish-instinct-class-naming
+trigger: "When defining a new struct or trait"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Class Naming
+
+## Action
+
+Use PascalCase for struct and trait names
+
+## Evidence
+
+- Naming conventions in codeStyle
+
+---
+id: aish-instinct-constant-naming
+trigger: "When defining a constant"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Constant Naming
+
+## Action
+
+Use SCREAMING_SNAKE_CASE for constant names
+
+## Evidence
+
+- Naming conventions in codeStyle
+
+---
+id: aish-instinct-import-style
+trigger: "When importing modules in Rust code"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Import Style
+
+## Action
+
+Use relative imports
+
+## Evidence
+
+- importStyle: relative in codeStyle
+- Pattern in src/provider/mod.rs
+
+---
+id: aish-instinct-export-style
+trigger: "When exporting modules or items"
+confidence: 0.8
+domain: code-style
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Export Style
+
+## Action
+
+Use named exports
+
+## Evidence
+
+- exportStyle: named in codeStyle
+- Pattern in src/provider/mod.rs
+
+---
+id: aish-instinct-test-location
+trigger: "When adding new tests"
+confidence: 0.85
+domain: testing
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Test Location
+
+## Action
+
+Place tests in the separate 'tests' directory
+
+## Evidence
+
+- testLocation: separate in architecture
+- Pattern in .github/workflows/ci.yml
+
+---
+id: aish-instinct-test-naming
+trigger: "When naming test files"
+confidence: 0.7
+domain: testing
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Test Naming
+
+## Action
+
+Use *.test.* pattern for test files
+
+## Evidence
+
+- filesInvolved: '**/*.test.*' in feature-development workflow
+
+---
+id: aish-instinct-test-coverage
+trigger: "When implementing a new feature"
+confidence: 0.9
+domain: testing
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Test Coverage
+
+## Action
+
+Add corresponding tests for the new feature
+
+## Evidence
+
+- commitSequence in feature-development workflow
+- Example: 'Add tests for feature'
+
+---
+id: aish-instinct-commit-format
+trigger: "When writing a commit message"
+confidence: 0.9
+domain: git
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Commit Format
+
+## Action
+
+Use conventional commit prefixes: feat, chore, test, fix
+
+## Evidence
+
+- commits.prefixes in patterns
+- Examples: 'feat: add config structs...'
+- commit: 'fix: reject bare-fence commit messages...'
+
+---
+id: aish-instinct-commit-length
+trigger: "When writing a commit message"
+confidence: 0.7
+domain: git
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Commit Length
+
+## Action
+
+Keep the commit message concise, around 49 characters on average
+
+## Evidence
+
+- averageLength: 49 in commits
+- Examples in commit list
+
+---
+id: aish-instinct-add-provider-adapter
+trigger: "When someone wants to add a new provider backend for chat/AI functionality"
+confidence: 0.95
+domain: workflow
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Add Provider Adapter
+
+## Action
+
+Create or update src/provider/{provider}.rs with the new provider implementation, then update src/provider/mod.rs to register or expose the new provider
+
+## Evidence
+
+- add-provider-adapter workflow
+- Pattern in src/provider/{provider}.rs and src/provider/mod.rs
+
+---
+id: aish-instinct-extend-config-logic
+trigger: "When someone wants to support new config options or model/provider resolution logic"
+confidence: 0.85
+domain: workflow
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Extend Config Logic
+
+## Action
+
+Update src/config/mod.rs with new structs, logic, or loading mechanisms, and optionally create or update src/config/{feature}.rs
+
+## Evidence
+
+- extend-config-logic workflow
+- Pattern in src/config/mod.rs and src/config/resolve.rs
+
+---
+id: aish-instinct-add-tool-or-extend-tooling
+trigger: "When someone wants to add a new CLI tool or extend tool functionality"
+confidence: 0.9
+domain: workflow
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Add Tool Or Extend Tooling
+
+## Action
+
+Create or update src/tool/{tool}.rs with the tool's logic, then update src/tool/mod.rs to register or expose the new tool
+
+## Evidence
+
+- add-tool-or-extend-tooling workflow
+- Pattern in src/tool/{tool}.rs and src/tool/mod.rs
+
+---
+id: aish-instinct-feature-development-sequence
+trigger: "When implementing a new feature"
+confidence: 0.8
+domain: workflow
+source: repo-analysis
+source_repo: daaquan/aish
+---
+
+# Aish Instinct Feature Development Sequence
+
+## Action
+
+Follow the sequence: Add feature implementation, add tests for the feature, update documentation
+
+## Evidence
+
+- commitSequence in feature-development workflow
+- Example: 'feat: add config structs...' followed by 'test: ensure Gemini adapter never leaks api_key in errors'
+
