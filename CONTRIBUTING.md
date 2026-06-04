@@ -55,10 +55,11 @@ merge. Because we squash-merge, maintainers ensure the final squash commit also 
 
 ## Workflow
 
-1. **Branch off `main`.** Never commit feature work directly to `main`.
-   Name branches `type/short-desc`, e.g. `feat/repl-core`, `fix/prompt-escaping`.
-2. **One feature per PR.** Keep each PR a single, self-contained unit of functionality.
-   Do not bundle unrelated changes — split them into separate PRs.
+1. **Commit directly to `main`** for most work — this is a solo-maintainer project.
+   For larger or riskier changes you may still branch (`type/short-desc`, e.g.
+   `feat/repl-core`) and open a PR.
+2. **Keep changes scoped.** One logical unit of functionality per commit (or per PR);
+   do not bundle unrelated changes.
 3. **Commit messages** follow [Conventional Commits](https://www.conventionalcommits.org/):
 
    ```
@@ -74,7 +75,7 @@ merge. Because we squash-merge, maintainers ensure the final squash commit also 
    - `fix: escape backticks in command parser`
    - `docs: document plugin API`
 
-4. **Open a PR** against `main`. The PR description must:
+4. **If you open a PR** against `main`, the description should:
    - Summarize **all** commits in the branch, not just the latest
      (`git diff main...HEAD` shows the full change set).
    - Explain the motivation.

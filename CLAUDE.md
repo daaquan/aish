@@ -16,12 +16,11 @@ Early scaffold. No application code, build system, or tests exist yet. This file
 
 ## GitHub Workflow
 
-- **One PR per feature.** Keep each PR scoped to a single, self-contained unit of functionality. Do not bundle unrelated changes.
-- **Branch per feature.** Never commit feature work directly to `main`. Branch off `main` named `type/short-desc` (e.g. `feat/repl-core`), push with `-u`.
+- **Direct commits to `main` allowed.** Solo-maintainer workflow: commit straight to `main`. No branch-per-feature or PR is required, though you may still open a PR for larger or riskier work.
 - **Conventional Commits** for messages: `<type>: <description>` where type is one of `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`.
 - **DCO sign-off required.** Every commit needs a `Signed-off-by` line — always commit with `git commit -s`.
-- **PR description** must summarize all commits in the branch (not just the latest) and include a test plan. Use `git diff main...HEAD` to review the full change set.
-- **Merge:** squash merge into `main` after green CI. `main` is protected (no force-push). Keep PRs small and reviewable; split large work into stacked feature PRs.
+- **Keep changes scoped.** One logical unit of functionality per commit; do not bundle unrelated changes.
+- **When you do open a PR**, squash merge after green CI. `main` is protected (no force-push). PR description should summarize all commits and include a test plan (`git diff main...HEAD`).
 - See `CONTRIBUTING.md` for the full contributor guide and `CODE_OF_CONDUCT.md`.
 
 ## Build & Test
