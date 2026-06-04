@@ -50,7 +50,9 @@ project-facing text is in English.
 
 ## Out of Scope (YAGNI)
 
-- CI workflow files (no build system yet).
+- Build/test CI workflow files (no build system yet). A DCO policy-check workflow
+  (`.github/workflows/dco.yml`) **is** included, since it enforces the chosen sign-off
+  policy and needs no build ecosystem.
 - `dependabot.yml` (no package ecosystem yet).
 - CLA tooling, SECURITY.md, governance/maintainer hierarchy (solo project; revisit if
   community grows).

@@ -43,7 +43,15 @@ Fix an entire branch:
 git rebase --signoff main
 ```
 
-A DCO check runs on every PR and must pass before merge.
+If the branch was already pushed, update it with a lease-protected force-push:
+
+```bash
+git push --force-with-lease
+```
+
+A DCO check runs on every PR (see `.github/workflows/dco.yml`) and must pass before
+merge. Because we squash-merge, maintainers ensure the final squash commit also keeps a
+`Signed-off-by` line.
 
 ## Workflow
 
@@ -71,25 +79,30 @@ A DCO check runs on every PR and must pass before merge.
      (`git diff main...HEAD` shows the full change set).
    - Explain the motivation.
    - Include a **test plan** (how you verified it; mark TODOs if any).
-5. **Review & merge.** A PR merges once it has **≥1 approving review** and **green CI**.
-   We **squash merge** so `main` keeps one commit per feature. Keep PRs small and
-   reviewable.
+5. **Review & merge.** A PR merges once it has **≥1 approving review** (and **green CI**,
+   once CI workflows exist). We **squash merge** so `main` keeps one commit per feature.
+   Keep PRs small and reviewable.
 
 ## Branch protection (maintainer setup)
 
-`main` is protected: squash-only merges, ≥1 required review, required status checks, and
-no force-pushes. Maintainers apply this once via:
+`main` is protected: squash-only merges, ≥1 required review, and no force-pushes.
+Maintainers apply this once. The GitHub branch-protection API expects a JSON body with
+nested objects, so pass it via `--input` (dotted `-f` keys do **not** nest correctly):
 
 ```bash
-gh api -X PUT repos/:owner/:repo/branches/main/protection \
-  -f required_pull_request_reviews.required_approving_review_count=1 \
-  -F enforce_admins=true \
-  -F required_status_checks=null \
-  -F restrictions=null \
-  -F allow_force_pushes=false
+gh api -X PUT repos/{owner}/{repo}/branches/main/protection --input - <<'JSON'
+{
+  "required_status_checks": null,
+  "enforce_admins": true,
+  "required_pull_request_reviews": { "required_approving_review_count": 1 },
+  "restrictions": null,
+  "allow_force_pushes": false
+}
+JSON
 ```
 
-(Adjust `required_status_checks` once CI exists.)
+`required_status_checks` is `null` until CI exists; once CI workflows are added, set it to
+`{ "strict": true, "contexts": ["<job-name>"] }` to require green CI before merge.
 
 ## Development setup
 

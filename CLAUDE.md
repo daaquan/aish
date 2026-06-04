@@ -12,7 +12,7 @@ Early scaffold. No application code, build system, or tests exist yet. This file
 
 ## License
 
-- **AGPL-3.0-only** (`LICENSE`). Copyleft: contributions are inbound = outbound. Any code added must be compatible with AGPL-3.0. Keep the `SPDX-License-Identifier: AGPL-3.0-only` marker in `README.md`; add per-file SPDX headers to source files once they exist.
+- **AGPL-3.0-only** (`LICENSE`). Copyleft: contributions are licensed under AGPL-3.0-only (same as the project). Any code added must be license-compatible with AGPL-3.0. Keep the `SPDX-License-Identifier: AGPL-3.0-only` marker in `README.md`; add per-file SPDX headers to source files once they exist.
 
 ## GitHub Workflow
 
