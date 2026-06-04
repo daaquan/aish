@@ -86,7 +86,15 @@ async fn run_commit(
 
     let alias = model.unwrap_or_else(|| cfg.commit.model.clone());
     let resolved = resolve_model(&cfg, &alias)?;
-    let provider = build_provider(&resolved.provider_name, &resolved).map_err(|e| anyhow!(e))?;
+    // Test hook: AISH_PROVIDER=mock returns a canned message without network.
+    let provider: Box<dyn aish::provider::Provider> =
+        if std::env::var("AISH_PROVIDER").as_deref() == Ok("mock") {
+            Box::new(aish::provider::mock::MockProvider::new(
+                std::env::var("AISH_MOCK_REPLY").unwrap_or_else(|_| "feat: add thing".into()),
+            ))
+        } else {
+            build_provider(&resolved.provider_name, &resolved).map_err(|e| anyhow!(e))?
+        };
 
     let style = style.unwrap_or_else(|| cfg.commit.style.clone());
     let lang = lang.unwrap_or_else(|| cfg.commit.language.clone());
