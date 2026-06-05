@@ -2,6 +2,7 @@
 use crate::config::Config;
 use crate::plugin::manifest::{Manifest, PluginEntry};
 use crate::plugin::protocol::{Frame, ProtoError, ABI_MAJOR, MAX_FRAME_BYTES};
+use crate::plugin::install::verify_sha256;
 use crate::plugin::services::{available_services, handle, scoped_config};
 use anyhow::{anyhow, Context, Result};
 use std::path::Path;
@@ -31,6 +32,8 @@ pub async fn run_plugin(
             ABI_MAJOR
         ));
     }
+
+    verify_sha256(&entry.path, &entry.binary_sha256)?;
 
     let mut child = Command::new(&entry.path)
         .current_dir(cwd)
