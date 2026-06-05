@@ -2,6 +2,7 @@
 pub mod host;
 pub mod install;
 pub mod manifest;
+pub mod prebuilt;
 pub mod protocol;
 pub mod services;
 

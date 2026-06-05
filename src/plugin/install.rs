@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 use crate::plugin::aish_home;
 use crate::plugin::manifest::{InstalledRegistry, Manifest, PluginEntry};
+use crate::plugin::prebuilt;
 use anyhow::{anyhow, Context, Result};
 use fs2::FileExt;
 use sha2::{Digest, Sha256};
@@ -288,7 +289,7 @@ pub fn read_manifest(registry_dir: &Path, name: &str) -> Result<Manifest> {
 }
 
 /// Full install pipeline: resolve registry -> read manifest -> build -> install.
-pub fn install_from_registry(source: &RegistrySource, name: &str) -> Result<PluginEntry> {
+pub async fn install_from_registry(source: &RegistrySource, name: &str) -> Result<PluginEntry> {
     let (dir, revision) = ensure_registry(source)?;
     let manifest = read_manifest(&dir, name)?;
     if manifest.name != name {
@@ -297,7 +298,26 @@ pub fn install_from_registry(source: &RegistrySource, name: &str) -> Result<Plug
             manifest.name
         ));
     }
-    let bin = build_plugin(&dir, name)?;
+    let bin = match prebuilt::release_repo(source, &dir) {
+        Some(repo) => {
+            match prebuilt::fetch_prebuilt(
+                &repo,
+                &manifest.name,
+                &manifest.version,
+                prebuilt::HOST_TARGET,
+            )
+            .await
+            {
+                Ok(Some(path)) => path,
+                Ok(None) => build_plugin(&dir, name)?,
+                Err(e) => {
+                    eprintln!("prebuilt fetch failed ({e}); falling back to cargo build");
+                    build_plugin(&dir, name)?
+                }
+            }
+        }
+        None => build_plugin(&dir, name)?,
+    };
     let source_str = match source {
         RegistrySource::Local(p) => p.display().to_string(),
         RegistrySource::Git { url } => url.clone(),
@@ -308,7 +328,7 @@ pub fn install_from_registry(source: &RegistrySource, name: &str) -> Result<Plug
 /// Update an already-installed plugin: re-resolve the registry, rebuild, and
 /// reinstall in place via the crash-safe swap. Errors if the plugin is not
 /// currently installed. Returns `(old_entry, new_entry)` for diff reporting.
-pub fn update_from_registry(
+pub async fn update_from_registry(
     source: &RegistrySource,
     name: &str,
 ) -> Result<(PluginEntry, PluginEntry)> {
@@ -320,7 +340,7 @@ pub fn update_from_registry(
             anyhow!("plugin `{name}` is not installed — use `aish plugin install {name}`")
         })?
         .clone();
-    let new = install_from_registry(source, name)?;
+    let new = install_from_registry(source, name).await?;
     Ok((old, new))
 }
 
@@ -401,13 +421,14 @@ mod tests {
         std::env::remove_var("AISH_HOME");
     }
 
-    #[test]
-    fn update_unknown_plugin_errors() {
+    #[tokio::test]
+    async fn update_unknown_plugin_errors() {
         let home = tempdir().unwrap();
         std::env::set_var("AISH_HOME", home.path());
         let src = tempdir().unwrap();
-        let err =
-            update_from_registry(&RegistrySource::Local(src.path().into()), "nope").unwrap_err();
+        let err = update_from_registry(&RegistrySource::Local(src.path().into()), "nope")
+            .await
+            .unwrap_err();
         assert!(err.to_string().contains("not installed"));
         std::env::remove_var("AISH_HOME");
     }

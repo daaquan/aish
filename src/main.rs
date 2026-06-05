@@ -191,7 +191,7 @@ async fn run_plugin_cmd(action: PluginAction) -> Result<()> {
                     return Ok(());
                 }
             }
-            let entry = install::install_from_registry(&source, &name)?;
+            let entry = install::install_from_registry(&source, &name).await?;
             println!(
                 "Installed `{name}` {} (revision {}).",
                 entry.version, entry.revision
@@ -212,7 +212,7 @@ async fn run_plugin_cmd(action: PluginAction) -> Result<()> {
                 return Ok(());
             }
             for n in names {
-                let (old, new) = install::update_from_registry(&source, &n)?;
+                let (old, new) = install::update_from_registry(&source, &n).await?;
                 if old.version == new.version && old.revision == new.revision {
                     println!(
                         "`{n}` already up to date ({} @ {}).",
