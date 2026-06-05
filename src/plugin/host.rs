@@ -37,6 +37,9 @@ pub async fn run_plugin(
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
+        // Ensure a timed-out / errored-out plugin is reaped instead of orphaned:
+        // any early return drops `child`, which then SIGKILLs the process.
+        .kill_on_drop(true)
         .spawn()
         .with_context(|| format!("spawning plugin `{}`", entry.path.display()))?;
 
