@@ -38,7 +38,10 @@ fn role_from_wire(r: &str) -> Role {
 }
 
 fn err(code: &str, message: impl Into<String>) -> ProtoError {
-    ProtoError { code: code.into(), message: message.into() }
+    ProtoError {
+        code: code.into(),
+        message: message.into(),
+    }
 }
 
 /// Dispatch one host service request. `Ok(payload)` -> Response ok:true,
@@ -66,7 +69,10 @@ pub async fn handle(
     }
 }
 
-async fn model_chat(payload: serde_json::Value, cfg: &Config) -> Result<serde_json::Value, ProtoError> {
+async fn model_chat(
+    payload: serde_json::Value,
+    cfg: &Config,
+) -> Result<serde_json::Value, ProtoError> {
     #[derive(Deserialize)]
     struct Req {
         model: String,
@@ -74,12 +80,16 @@ async fn model_chat(payload: serde_json::Value, cfg: &Config) -> Result<serde_js
         #[serde(default)]
         temperature: Option<f32>,
     }
-    let req: Req = serde_json::from_value(payload).map_err(|e| err("bad_request", e.to_string()))?;
+    let req: Req =
+        serde_json::from_value(payload).map_err(|e| err("bad_request", e.to_string()))?;
     let resolved = resolve_model(cfg, &req.model).map_err(|e| err("resolve", e.to_string()))?;
     let messages: Vec<Message> = req
         .messages
         .into_iter()
-        .map(|m| Message { role: role_from_wire(&m.role), content: m.content })
+        .map(|m| Message {
+            role: role_from_wire(&m.role),
+            content: m.content,
+        })
         .collect();
 
     // Test hook: AISH_PROVIDER=mock returns canned text without network.
@@ -88,11 +98,16 @@ async fn model_chat(payload: serde_json::Value, cfg: &Config) -> Result<serde_js
             std::env::var("AISH_MOCK_REPLY").unwrap_or_else(|_| "feat: add thing".into()),
         ))
     } else {
-        build_provider(&resolved.provider_name, &resolved).map_err(|e| err("provider", e.to_string()))?
+        build_provider(&resolved.provider_name, &resolved)
+            .map_err(|e| err("provider", e.to_string()))?
     };
 
     let resp = provider
-        .chat(ChatRequest { model: resolved.model.clone(), messages, temperature: req.temperature })
+        .chat(ChatRequest {
+            model: resolved.model.clone(),
+            messages,
+            temperature: req.temperature,
+        })
         .await
         .map_err(|e| err("provider", e.to_string()))?;
     let usage = resp.usage.unwrap_or_default();
@@ -103,7 +118,8 @@ async fn model_chat(payload: serde_json::Value, cfg: &Config) -> Result<serde_js
 }
 
 fn audit_record(payload: serde_json::Value) -> Result<serde_json::Value, ProtoError> {
-    let entry: AuditEntry = serde_json::from_value(payload).map_err(|e| err("bad_request", e.to_string()))?;
+    let entry: AuditEntry =
+        serde_json::from_value(payload).map_err(|e| err("bad_request", e.to_string()))?;
     audit::record(&entry).map_err(|e| err("audit", e.to_string()))?;
     Ok(serde_json::json!({}))
 }
@@ -139,7 +155,9 @@ mod tests {
             "model": "default",
             "messages": [{"role": "user", "content": "hi"}]
         });
-        let out = handle("model.chat", payload, &manifest(true, false), &cfg()).await.unwrap();
+        let out = handle("model.chat", payload, &manifest(true, false), &cfg())
+            .await
+            .unwrap();
         assert_eq!(out["content"], "feat: hello");
         std::env::remove_var("AISH_PROVIDER");
     }
@@ -147,13 +165,22 @@ mod tests {
     #[tokio::test]
     async fn model_chat_denied_without_permission() {
         let payload = serde_json::json!({"model": "default", "messages": []});
-        let e = handle("model.chat", payload, &manifest(false, false), &cfg()).await.unwrap_err();
+        let e = handle("model.chat", payload, &manifest(false, false), &cfg())
+            .await
+            .unwrap_err();
         assert_eq!(e.code, "permission_denied");
     }
 
     #[tokio::test]
     async fn unknown_op_errors() {
-        let e = handle("bogus.op", serde_json::json!({}), &manifest(true, true), &cfg()).await.unwrap_err();
+        let e = handle(
+            "bogus.op",
+            serde_json::json!({}),
+            &manifest(true, true),
+            &cfg(),
+        )
+        .await
+        .unwrap_err();
         assert_eq!(e.code, "unknown_op");
     }
 

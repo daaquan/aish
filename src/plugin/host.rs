@@ -1,8 +1,8 @@
 // SPDX-License-Identifier: MIT
 use crate::config::Config;
+use crate::plugin::install::verify_sha256;
 use crate::plugin::manifest::{Manifest, PluginEntry};
 use crate::plugin::protocol::{Frame, ProtoError, ABI_MAJOR, MAX_FRAME_BYTES};
-use crate::plugin::install::verify_sha256;
 use crate::plugin::services::{available_services, handle, scoped_config};
 use anyhow::{anyhow, Context, Result};
 use std::path::Path;
@@ -70,7 +70,11 @@ pub async fn run_plugin(
 
     let mut first = true;
     loop {
-        let timeout = if first { STARTUP_TIMEOUT } else { REQUEST_TIMEOUT };
+        let timeout = if first {
+            STARTUP_TIMEOUT
+        } else {
+            REQUEST_TIMEOUT
+        };
         let maybe_line = tokio::time::timeout(timeout, read_frame_line(&mut reader))
             .await
             .map_err(|_| anyhow!("plugin `{}` timed out", manifest.name))??;
@@ -89,7 +93,12 @@ pub async fn run_plugin(
         match Frame::from_line(line.trim_end()) {
             Ok(Frame::Request { id, op, payload }) => {
                 let resp = match handle(&op, payload, manifest, cfg).await {
-                    Ok(payload) => Frame::Response { id, ok: true, payload: Some(payload), error: None },
+                    Ok(payload) => Frame::Response {
+                        id,
+                        ok: true,
+                        payload: Some(payload),
+                        error: None,
+                    },
                     Err(ProtoError { code, message }) => Frame::Response {
                         id,
                         ok: false,
@@ -104,11 +113,16 @@ pub async fn run_plugin(
                 if ok {
                     return Ok(payload.get("exit").and_then(|v| v.as_i64()).unwrap_or(0) as i32);
                 }
-                return Err(anyhow!("plugin `{}` reported failure: {payload}", manifest.name));
+                return Err(anyhow!(
+                    "plugin `{}` reported failure: {payload}",
+                    manifest.name
+                ));
             }
             Ok(other) => {
                 let _ = child.kill().await;
-                return Err(anyhow!("protocol error: unexpected frame from plugin: {other:?}"));
+                return Err(anyhow!(
+                    "protocol error: unexpected frame from plugin: {other:?}"
+                ));
             }
             Err(e) => {
                 let _ = child.kill().await;
@@ -136,7 +150,9 @@ async fn read_frame_line<R: AsyncBufRead + AsyncBufReadExt + Unpin>(
         return Ok(None);
     }
     if line.len() > MAX_FRAME_BYTES {
-        return Err(anyhow!("protocol error: frame exceeds {MAX_FRAME_BYTES} bytes"));
+        return Err(anyhow!(
+            "protocol error: frame exceeds {MAX_FRAME_BYTES} bytes"
+        ));
     }
     Ok(Some(line))
 }
@@ -146,6 +162,8 @@ fn tail(s: &str, max: usize) -> String {
         return s.to_string();
     }
     let start = s.len() - max;
-    let start = (start..s.len()).find(|i| s.is_char_boundary(*i)).unwrap_or(s.len());
+    let start = (start..s.len())
+        .find(|i| s.is_char_boundary(*i))
+        .unwrap_or(s.len());
     format!("…{}", &s[start..])
 }

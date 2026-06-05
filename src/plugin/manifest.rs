@@ -83,7 +83,8 @@ impl InstalledRegistry {
             std::fs::create_dir_all(parent)
                 .map_err(|e| RegistryError::Io(parent.to_path_buf(), e.to_string()))?;
         }
-        let s = toml::to_string_pretty(self).map_err(|e| RegistryError::Serialize(e.to_string()))?;
+        let s =
+            toml::to_string_pretty(self).map_err(|e| RegistryError::Serialize(e.to_string()))?;
         std::fs::write(path, s).map_err(|e| RegistryError::Io(path.to_path_buf(), e.to_string()))
     }
 
@@ -171,10 +172,14 @@ audit = true
         let dir = tempdir().unwrap();
         let path = dir.path().join("plugins.toml");
         let mut reg = InstalledRegistry::default();
-        reg.plugins.insert("commit".into(), entry(true, &["commit"]));
+        reg.plugins
+            .insert("commit".into(), entry(true, &["commit"]));
         reg.save(&path).unwrap();
         let loaded = InstalledRegistry::load(&path).unwrap();
-        assert_eq!(loaded.plugins["commit"].subcommands, vec!["commit".to_string()]);
+        assert_eq!(
+            loaded.plugins["commit"].subcommands,
+            vec!["commit".to_string()]
+        );
         assert!(loaded.plugins["commit"].enabled);
     }
 
@@ -188,7 +193,8 @@ audit = true
     #[test]
     fn find_by_subcommand_ignores_disabled() {
         let mut reg = InstalledRegistry::default();
-        reg.plugins.insert("commit".into(), entry(false, &["commit"]));
+        reg.plugins
+            .insert("commit".into(), entry(false, &["commit"]));
         assert!(reg.find_by_subcommand("commit").is_none());
         reg.plugins.get_mut("commit").unwrap().enabled = true;
         assert_eq!(reg.find_by_subcommand("commit").unwrap().0, "commit");
@@ -197,10 +203,15 @@ audit = true
     #[test]
     fn conflict_detected_between_enabled_plugins() {
         let mut reg = InstalledRegistry::default();
-        reg.plugins.insert("commit".into(), entry(true, &["commit"]));
-        let err = reg.check_conflicts("other", &["commit".to_string()]).unwrap_err();
+        reg.plugins
+            .insert("commit".into(), entry(true, &["commit"]));
+        let err = reg
+            .check_conflicts("other", &["commit".to_string()])
+            .unwrap_err();
         assert!(matches!(err, RegistryError::SubcommandConflict { .. }));
         // Re-checking the same plugin name is allowed (idempotent install).
-        assert!(reg.check_conflicts("commit", &["commit".to_string()]).is_ok());
+        assert!(reg
+            .check_conflicts("commit", &["commit".to_string()])
+            .is_ok());
     }
 }

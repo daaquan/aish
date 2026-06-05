@@ -87,9 +87,22 @@ mod tests {
     #[test]
     fn request_response_result_roundtrip() {
         for f in [
-            Frame::Request { id: 2, op: "model.chat".into(), payload: serde_json::json!({}) },
-            Frame::Response { id: 2, ok: true, payload: Some(serde_json::json!({"content": "x"})), error: None },
-            Frame::Result { id: 1, ok: true, payload: serde_json::json!({"exit": 0}) },
+            Frame::Request {
+                id: 2,
+                op: "model.chat".into(),
+                payload: serde_json::json!({}),
+            },
+            Frame::Response {
+                id: 2,
+                ok: true,
+                payload: Some(serde_json::json!({"content": "x"})),
+                error: None,
+            },
+            Frame::Result {
+                id: 1,
+                ok: true,
+                payload: serde_json::json!({"exit": 0}),
+            },
         ] {
             let line = f.to_line().unwrap();
             assert_eq!(Frame::from_line(&line).unwrap(), f);
@@ -99,13 +112,23 @@ mod tests {
     #[test]
     fn tag_field_selects_variant() {
         let line = r#"{"type":"result","id":1,"ok":true,"payload":{"exit":0}}"#;
-        assert!(matches!(Frame::from_line(line).unwrap(), Frame::Result { id: 1, ok: true, .. }));
+        assert!(matches!(
+            Frame::from_line(line).unwrap(),
+            Frame::Result {
+                id: 1,
+                ok: true,
+                ..
+            }
+        ));
     }
 
     #[test]
     fn unknown_fields_are_ignored() {
         // Additive-compatible: a future field must not break an older parser.
         let line = r#"{"type":"request","id":3,"op":"audit.record","payload":{},"future":42}"#;
-        assert!(matches!(Frame::from_line(line).unwrap(), Frame::Request { id: 3, .. }));
+        assert!(matches!(
+            Frame::from_line(line).unwrap(),
+            Frame::Request { id: 3, .. }
+        ));
     }
 }

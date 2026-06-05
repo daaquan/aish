@@ -7,7 +7,11 @@ use std::process::Command;
 
 fn build_fake() -> PathBuf {
     let status = Command::new(env!("CARGO"))
-        .args(["build", "--manifest-path", "tests/fixtures/fake-plugin/Cargo.toml"])
+        .args([
+            "build",
+            "--manifest-path",
+            "tests/fixtures/fake-plugin/Cargo.toml",
+        ])
         .status()
         .unwrap();
     assert!(status.success(), "fake-plugin build failed");
@@ -21,7 +25,10 @@ fn manifest() -> Manifest {
         abi: "1".into(),
         description: None,
         subcommands: vec!["fake".into()],
-        permissions: Permissions { model: true, audit: true },
+        permissions: Permissions {
+            model: true,
+            audit: true,
+        },
     }
 }
 
@@ -46,7 +53,16 @@ fn cfg() -> Config {
 async fn plugin_ok_returns_exit_zero() {
     let bin = build_fake();
     std::env::set_var("FAKE_MODE", "ok");
-    let code = run_plugin(&entry(bin), &manifest(), "fake", &[], &std::env::current_dir().unwrap(), &cfg()).await.unwrap();
+    let code = run_plugin(
+        &entry(bin),
+        &manifest(),
+        "fake",
+        &[],
+        &std::env::current_dir().unwrap(),
+        &cfg(),
+    )
+    .await
+    .unwrap();
     assert_eq!(code, 0);
 }
 
@@ -56,7 +72,16 @@ async fn plugin_model_chat_roundtrips_through_host() {
     std::env::set_var("FAKE_MODE", "echo_model");
     std::env::set_var("AISH_PROVIDER", "mock");
     std::env::set_var("AISH_MOCK_REPLY", "feat: from host");
-    let code = run_plugin(&entry(bin), &manifest(), "fake", &[], &std::env::current_dir().unwrap(), &cfg()).await.unwrap();
+    let code = run_plugin(
+        &entry(bin),
+        &manifest(),
+        "fake",
+        &[],
+        &std::env::current_dir().unwrap(),
+        &cfg(),
+    )
+    .await
+    .unwrap();
     assert_eq!(code, 0);
     std::env::remove_var("AISH_PROVIDER");
 }
@@ -65,7 +90,16 @@ async fn plugin_model_chat_roundtrips_through_host() {
 async fn plugin_crash_before_result_is_an_error() {
     let bin = build_fake();
     std::env::set_var("FAKE_MODE", "crash");
-    let err = run_plugin(&entry(bin), &manifest(), "fake", &[], &std::env::current_dir().unwrap(), &cfg()).await.unwrap_err();
+    let err = run_plugin(
+        &entry(bin),
+        &manifest(),
+        "fake",
+        &[],
+        &std::env::current_dir().unwrap(),
+        &cfg(),
+    )
+    .await
+    .unwrap_err();
     assert!(err.to_string().contains("before sending a result"));
 }
 
@@ -74,6 +108,15 @@ async fn abi_major_mismatch_is_rejected() {
     let bin = build_fake();
     let mut m = manifest();
     m.abi = "2".into();
-    let err = run_plugin(&entry(bin), &m, "fake", &[], &std::env::current_dir().unwrap(), &cfg()).await.unwrap_err();
+    let err = run_plugin(
+        &entry(bin),
+        &m,
+        "fake",
+        &[],
+        &std::env::current_dir().unwrap(),
+        &cfg(),
+    )
+    .await
+    .unwrap_err();
     assert!(err.to_string().contains("ABI"));
 }

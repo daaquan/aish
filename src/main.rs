@@ -1,14 +1,15 @@
 // SPDX-License-Identifier: MIT
 use aish::audit;
-use aish::cli::{Cli, Command, ConfigAction, ModelsAction, ProvidersAction};
-use aish::config::resolve::resolve_model;
+use aish::cli::{Cli, Command, ConfigAction, ModelsAction, PluginAction, ProvidersAction};
 use aish::config::Config;
-use aish::git;
-use aish::provider::{build_provider, ChatRequest};
-use aish::tool::commit::{build_messages, postprocess};
+use aish::plugin::host::run_plugin;
+use aish::plugin::install::{self, RegistrySource};
+use aish::plugin::manifest::{InstalledRegistry, Manifest};
 use anyhow::{anyhow, Context, Result};
 use clap::Parser;
 use std::io::Write;
+
+const DEFAULT_REGISTRY: &str = "git@github.com:daaquan/aish-plugins.git";
 
 #[tokio::main]
 async fn main() {
@@ -108,14 +109,8 @@ async fn run(cli: Cli) -> Result<()> {
             }
             Ok(())
         }
-        Command::Commit {
-            apply,
-            model,
-            style,
-            lang,
-            signoff,
-            no_cache,
-        } => run_commit(apply, model, style, lang, signoff, no_cache, json).await,
+        Command::Plugin { action } => run_plugin_cmd(action).await,
+        Command::External(args) => dispatch_external(args).await,
     }
 }
 
@@ -173,157 +168,109 @@ fn run_config_check(json: bool) -> Result<()> {
     Ok(())
 }
 
-async fn run_commit(
-    apply: bool,
-    model: Option<String>,
-    style: Option<String>,
-    lang: Option<String>,
-    signoff: bool,
-    no_cache: bool,
-    json: bool,
-) -> Result<()> {
-    let cfg = Config::load()?;
-    let cwd = std::env::current_dir()?;
+fn registry_source() -> RegistrySource {
+    let value = std::env::var("AISH_REGISTRY").unwrap_or_else(|_| DEFAULT_REGISTRY.to_string());
+    RegistrySource::parse(&value)
+}
 
-    let diff = git::staged_diff(&cwd)?;
-    if diff.trim().is_empty() {
-        if json {
-            emit_json(&serde_json::json!({
-                "committed": false,
-                "message": serde_json::Value::Null,
-                "note": "nothing staged",
-            }));
-        } else {
-            println!("Nothing staged. Run `git add` first.");
-        }
-        return Ok(());
-    }
-
-    let alias = model.unwrap_or_else(|| cfg.commit.model.clone());
-    let resolved = resolve_model(&cfg, &alias)?;
-
-    let style = style.unwrap_or_else(|| cfg.commit.style.clone());
-    let lang = lang.unwrap_or_else(|| cfg.commit.language.clone());
-    let messages = build_messages(&style, &lang, &diff);
-
-    let cache_dir = aish::cache::cache_dir();
-    let cache_key = aish::cache::request_key(&resolved.provider_name, &resolved.model, &messages);
-
-    // Deterministic cache: an identical request (same diff, model, style, language)
-    // reuses the stored message and skips the model request entirely.
-    let mut cached = false;
-    let (message, usage) = match (!no_cache)
-        .then(|| aish::cache::get(&cache_dir, &cache_key))
-        .flatten()
-    {
-        Some(hit) => {
-            cached = true;
-            if !json {
-                println!("(cached — no model request made)");
-            }
-            (hit, aish::provider::Usage::default())
-        }
-        None => {
-            // Test hook: AISH_PROVIDER=mock returns a canned message without network.
-            let provider: Box<dyn aish::provider::Provider> =
-                if std::env::var("AISH_PROVIDER").as_deref() == Ok("mock") {
-                    Box::new(aish::provider::mock::MockProvider::new(
-                        std::env::var("AISH_MOCK_REPLY")
-                            .unwrap_or_else(|_| "feat: add thing".into()),
-                    ))
-                } else {
-                    build_provider(&resolved.provider_name, &resolved).map_err(|e| anyhow!(e))?
-                };
-
-            let resp = provider
-                .chat(ChatRequest {
-                    model: resolved.model.clone(),
-                    messages,
-                    temperature: Some(0.2),
-                })
-                .await
-                .map_err(|e| anyhow!(e))?;
-
-            let message = postprocess(&resp.content);
-            if message.is_empty() {
-                return Err(anyhow!(
-                    "model returned an empty/unusable message; not committing. raw: {:?}",
-                    resp.content
-                ));
-            }
-            if !no_cache {
-                let _ = aish::cache::put(&cache_dir, &cache_key, &message);
-            }
-            (message, resp.usage.unwrap_or_default())
-        }
-    };
-
-    if !json {
-        println!("\nSuggested commit:\n\n{message}\n");
-    }
-
-    let decision = if apply {
-        git::commit(&cwd, &message, signoff)?;
-        if !json {
-            println!("Committed.");
-        }
-        "applied"
-    } else if json {
-        // JSON mode is non-interactive: emit the suggestion without committing.
-        // CI that wants to commit passes `--apply --json`.
-        "suggested"
-    } else {
-        print!("Accept? [Y/n/e(dit)] ");
-        std::io::stdout().flush()?;
-        let mut input = String::new();
-        let n = std::io::stdin().read_line(&mut input)?;
-        if n == 0 {
-            // EOF / non-interactive (e.g. </dev/null): do not commit.
-            println!("Aborted (no input).");
-            "rejected"
-        } else {
-            let answer = input.trim().to_lowercase();
-            if answer == "e" || answer == "edit" {
-                let edited = aish::editor::edit(&message).map_err(|e| anyhow!(e))?;
-                if edited.trim().is_empty() {
-                    println!("Aborted (empty message).");
-                    "rejected"
-                } else {
-                    git::commit(&cwd, &edited, signoff)?;
-                    println!("Committed.");
-                    "edited"
+async fn run_plugin_cmd(action: PluginAction) -> Result<()> {
+    match action {
+        PluginAction::Install { name, yes } => {
+            let source = registry_source();
+            if !yes {
+                println!(
+                    "Installing `{name}` builds and runs code from:\n  {source:?}\n\
+                     Plugins are trusted native executables (install runs build scripts).\n\
+                     Continue? [y/N] "
+                );
+                std::io::stdout().flush()?;
+                let mut input = String::new();
+                std::io::stdin().read_line(&mut input)?;
+                if !matches!(input.trim().to_lowercase().as_str(), "y" | "yes") {
+                    println!("Aborted.");
+                    return Ok(());
                 }
-            } else if answer.is_empty() || answer == "y" || answer == "yes" {
-                git::commit(&cwd, &message, signoff)?;
-                println!("Committed.");
-                "applied"
-            } else {
-                println!("Aborted.");
-                "rejected"
             }
+            let entry = install::install_from_registry(&source, &name)?;
+            println!(
+                "Installed `{name}` {} (revision {}).",
+                entry.version, entry.revision
+            );
+            Ok(())
         }
-    };
-
-    if json {
-        emit_json(&serde_json::json!({
-            "message": message,
-            "decision": decision,
-            "committed": decision == "applied" || decision == "edited",
-            "cached": cached,
-            "provider": resolved.provider_name.clone(),
-            "model": resolved.model.clone(),
-            "prompt_tokens": usage.prompt_tokens,
-            "completion_tokens": usage.completion_tokens,
-        }));
+        PluginAction::List => {
+            let reg = InstalledRegistry::load(&install::plugins_toml())?;
+            if reg.plugins.is_empty() {
+                println!("No plugins installed. Try `aish plugin install commit`.");
+            }
+            for (name, e) in &reg.plugins {
+                let state = if e.enabled { "enabled" } else { "disabled" };
+                println!(
+                    "{name:14} {:8} {state:8} [{}]",
+                    e.version,
+                    e.subcommands.join(",")
+                );
+            }
+            Ok(())
+        }
+        PluginAction::Enable { name } => set_enabled(&name, true),
+        PluginAction::Disable { name } => set_enabled(&name, false),
+        PluginAction::Uninstall { name } => {
+            let path = install::plugins_toml();
+            let mut reg = InstalledRegistry::load(&path)?;
+            let entry = reg
+                .plugins
+                .remove(&name)
+                .ok_or_else(|| anyhow!("plugin `{name}` is not installed"))?;
+            if let Some(dir) = entry.path.parent() {
+                let _ = std::fs::remove_dir_all(dir);
+            }
+            reg.save(&path)?;
+            println!("Uninstalled `{name}`.");
+            Ok(())
+        }
     }
+}
 
-    let _ = audit::record(&audit::AuditEntry {
-        tool: "git.commit.message.generate".into(),
-        provider: resolved.provider_name.clone(),
-        model: resolved.model.clone(),
-        prompt_tokens: usage.prompt_tokens,
-        completion_tokens: usage.completion_tokens,
-        decision: decision.into(),
-    });
+fn set_enabled(name: &str, enabled: bool) -> Result<()> {
+    let path = install::plugins_toml();
+    let mut reg = InstalledRegistry::load(&path)?;
+    let subs = reg
+        .plugins
+        .get(name)
+        .ok_or_else(|| anyhow!("plugin `{name}` is not installed"))?
+        .subcommands
+        .clone();
+    if enabled {
+        reg.check_conflicts(name, &subs)?;
+    }
+    reg.plugins.get_mut(name).unwrap().enabled = enabled;
+    reg.save(&path)?;
+    println!("{} `{name}`.", if enabled { "Enabled" } else { "Disabled" });
+    Ok(())
+}
+
+async fn dispatch_external(args: Vec<String>) -> Result<()> {
+    let subcommand = args
+        .first()
+        .cloned()
+        .ok_or_else(|| anyhow!("no subcommand given"))?;
+    let rest = &args[1..];
+    let cfg = Config::load()?;
+    let reg = InstalledRegistry::load(&install::plugins_toml())?;
+    let (_name, entry) = reg.find_by_subcommand(&subcommand).ok_or_else(|| {
+        anyhow!(
+            "no enabled plugin provides `{subcommand}` — try `aish plugin install {subcommand}`"
+        )
+    })?;
+    // Load the installed manifest for permission + abi info.
+    let manifest_path = entry.path.parent().unwrap().join("aish-plugin.toml");
+    let manifest = Manifest::from_toml(&std::fs::read_to_string(&manifest_path)?)
+        .map_err(|e| anyhow!("reading installed manifest: {e}"))?;
+    let cwd = std::env::current_dir()?;
+    let code = run_plugin(entry, &manifest, &subcommand, rest, &cwd, &cfg).await?;
+    if code != 0 {
+        std::process::exit(code);
+    }
     Ok(())
 }

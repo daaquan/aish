@@ -56,6 +56,7 @@ pub fn install_built(
     let lock = std::fs::OpenOptions::new()
         .create(true)
         .write(true)
+        .truncate(false)
         .open(lock_path())?;
     lock.lock_exclusive()?;
     let result = (|| {
@@ -72,10 +73,18 @@ pub fn install_built(
 
         let bin_name = manifest.name.clone();
         let staged_bin = staging.join(&bin_name);
-        std::fs::copy(built_binary, &staged_bin)
-            .with_context(|| format!("copying {} -> {}", built_binary.display(), staged_bin.display()))?;
+        std::fs::copy(built_binary, &staged_bin).with_context(|| {
+            format!(
+                "copying {} -> {}",
+                built_binary.display(),
+                staged_bin.display()
+            )
+        })?;
         make_executable(&staged_bin)?;
-        std::fs::write(staging.join("aish-plugin.toml"), toml::to_string_pretty(manifest)?)?;
+        std::fs::write(
+            staging.join("aish-plugin.toml"),
+            toml::to_string_pretty(manifest)?,
+        )?;
 
         let sha = sha256_file(&staged_bin)?;
 
@@ -143,7 +152,10 @@ pub fn verify_sha256(path: &Path, expected: &str) -> Result<()> {
     }
     let actual = sha256_file(path)?;
     if actual != expected {
-        return Err(anyhow!("plugin binary at {} failed integrity check", path.display()));
+        return Err(anyhow!(
+            "plugin binary at {} failed integrity check",
+            path.display()
+        ));
     }
     Ok(())
 }
@@ -166,7 +178,9 @@ impl RegistrySource {
             return RegistrySource::Local(PathBuf::from(rest));
         }
         if trimmed.contains("://") || trimmed.starts_with("git@") {
-            return RegistrySource::Git { url: trimmed.to_string() };
+            return RegistrySource::Git {
+                url: trimmed.to_string(),
+            };
         }
         RegistrySource::Local(PathBuf::from(trimmed))
     }
@@ -190,7 +204,10 @@ pub fn ensure_registry(source: &RegistrySource) -> Result<(PathBuf, String)> {
                 run_git(&dir, &["reset", "--quiet", "--hard", "origin/HEAD"])?;
             } else {
                 std::fs::create_dir_all(aish_home())?;
-                run_git(Path::new("."), &["clone", "--quiet", url, &dir.display().to_string()])?;
+                run_git(
+                    Path::new("."),
+                    &["clone", "--quiet", url, &dir.display().to_string()],
+                )?;
             }
             let rev = run_git(&dir, &["rev-parse", "HEAD"])?.trim().to_string();
             Ok((dir, rev))
@@ -199,10 +216,16 @@ pub fn ensure_registry(source: &RegistrySource) -> Result<(PathBuf, String)> {
 }
 
 fn run_git(dir: &Path, args: &[&str]) -> Result<String> {
-    let out = Command::new("git").current_dir(dir).args(args).output()
+    let out = Command::new("git")
+        .current_dir(dir)
+        .args(args)
+        .output()
         .with_context(|| format!("running git {args:?}"))?;
     if !out.status.success() {
-        return Err(anyhow!("git {args:?} failed: {}", String::from_utf8_lossy(&out.stderr)));
+        return Err(anyhow!(
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        ));
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
@@ -213,7 +236,10 @@ pub fn build_plugin(registry_dir: &Path, name: &str) -> Result<PathBuf> {
     let crate_dir = registry_dir.join(name);
     let manifest_path = crate_dir.join("Cargo.toml");
     if !manifest_path.exists() {
-        return Err(anyhow!("plugin `{name}` not found in registry ({})", manifest_path.display()));
+        return Err(anyhow!(
+            "plugin `{name}` not found in registry ({})",
+            manifest_path.display()
+        ));
     }
     let cargo_home = aish_home().join("cargo-home");
     std::fs::create_dir_all(&cargo_home)?;
@@ -224,7 +250,10 @@ pub fn build_plugin(registry_dir: &Path, name: &str) -> Result<PathBuf> {
         .output()
         .with_context(|| format!("building plugin `{name}`"))?;
     if !out.status.success() {
-        return Err(anyhow!("cargo build failed for `{name}`: {}", String::from_utf8_lossy(&out.stderr)));
+        return Err(anyhow!(
+            "cargo build failed for `{name}`: {}",
+            String::from_utf8_lossy(&out.stderr)
+        ));
     }
     let bin = crate_dir.join("target").join("release").join(name);
     if !bin.exists() {
@@ -246,7 +275,10 @@ pub fn install_from_registry(source: &RegistrySource, name: &str) -> Result<Plug
     let (dir, revision) = ensure_registry(source)?;
     let manifest = read_manifest(&dir, name)?;
     if manifest.name != name {
-        return Err(anyhow!("manifest name `{}` != requested `{name}`", manifest.name));
+        return Err(anyhow!(
+            "manifest name `{}` != requested `{name}`",
+            manifest.name
+        ));
     }
     let bin = build_plugin(&dir, name)?;
     let source_str = match source {
@@ -262,7 +294,8 @@ mod tests {
     use tempfile::tempdir;
 
     fn manifest() -> Manifest {
-        Manifest::from_toml("name=\"demo\"\nversion=\"0.1.0\"\nabi=\"1\"\nsubcommands=[\"demo\"]\n").unwrap()
+        Manifest::from_toml("name=\"demo\"\nversion=\"0.1.0\"\nabi=\"1\"\nsubcommands=[\"demo\"]\n")
+            .unwrap()
     }
 
     #[test]
@@ -280,10 +313,22 @@ mod tests {
 
     #[test]
     fn registry_source_parsing() {
-        assert!(matches!(RegistrySource::parse("/opt/aish-plugins"), RegistrySource::Local(_)));
-        assert!(matches!(RegistrySource::parse("file:///tmp/x"), RegistrySource::Local(_)));
-        assert!(matches!(RegistrySource::parse("git@github.com:u/r.git"), RegistrySource::Git { .. }));
-        assert!(matches!(RegistrySource::parse("https://github.com/u/r"), RegistrySource::Git { .. }));
+        assert!(matches!(
+            RegistrySource::parse("/opt/aish-plugins"),
+            RegistrySource::Local(_)
+        ));
+        assert!(matches!(
+            RegistrySource::parse("file:///tmp/x"),
+            RegistrySource::Local(_)
+        ));
+        assert!(matches!(
+            RegistrySource::parse("git@github.com:u/r.git"),
+            RegistrySource::Git { .. }
+        ));
+        assert!(matches!(
+            RegistrySource::parse("https://github.com/u/r"),
+            RegistrySource::Git { .. }
+        ));
     }
 
     #[test]
