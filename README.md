@@ -30,6 +30,11 @@ registry is `git@github.com:daaquan/aish-plugins.git` (override with
 `AISH_REGISTRY`). See the [plugin system design](docs/superpowers/specs/2026-06-05-plugin-system-design.md)
 for the stdio ABI.
 
+Even for trusted plugins the host guards the boundary: each plugin runs under
+per-phase timeouts and is SIGKILLed if it overstays, its stderr is drained into a
+bounded buffer, oversized protocol frames are rejected as they are read, and
+non-UTF-8 arguments are refused rather than forwarded.
+
 ### JSON output (CI/CD)
 
 The global `--json` flag makes built-in commands emit machine-readable JSON on

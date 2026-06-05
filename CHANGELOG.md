@@ -9,13 +9,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-06-05
+
 ### Added
 
-- Subprocess plugin system: `aish plugin install/list/enable/disable/uninstall`.
+- Subprocess plugin system: `aish plugin install/update/list/enable/disable/uninstall`.
   Tools are external binaries spoken to over a stdio JSON ABI; core exposes
-  `model.chat` (keys stay in core) and `audit.record` services.
-- Release workflow that cross-compiles binaries for every installer target,
-  published under raw `uname`-based asset names (`aish-$(uname -s)-$(uname -m)`).
+  `model.chat` (provider keys stay in core) and `audit.record` services.
+- Per-plugin configuration via `[plugins.<name>]` tables — each plugin sees only
+  its own scoped config block.
+- Global `--json` flag for machine-readable output (`config check`, `usage`);
+  `config check --json` still exits nonzero on errors, so it works as a CI gate.
+- Release workflow that cross-compiles static-musl Linux and native macOS
+  binaries for every installer target, published under raw `uname`-based asset
+  names (`aish-$(uname -s)-$(uname -m)`).
 
 ### Changed
 
@@ -25,6 +32,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   DCO sign-off requirements — contributions are welcome with no extra ceremony.
 - Linux release binaries are now built as **static musl** builds for
   portability across distros.
+
+### Security
+
+- The host enforces per-phase timeouts on every plugin (startup / request /
+  service / reap) and SIGKILLs a child that overstays; plugin stderr is drained
+  into a bounded 64 KiB ring buffer so a flood cannot grow host memory.
+- The plugin frame reader enforces the 1 MiB frame cap *during* the read, so a
+  plugin that never emits a newline cannot buffer unbounded input.
+- Non-UTF-8 external argv is captured and rejected with a clear, positional error
+  instead of being forwarded or surfacing a generic parser message.
 
 ## [0.1.0] — 2026-06-05
 
@@ -39,5 +56,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` install script and project governance foundation
   (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, design specs).
 
-[Unreleased]: https://github.com/daaquan/aish/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/daaquan/aish/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/daaquan/aish/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/daaquan/aish/releases/tag/v0.1.0
