@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] — 2026-06-06
+
+### Added
+
+- `aish plugin install` now downloads a prebuilt plugin binary from the
+  registry's GitHub Releases (`{name}-v{version}` tag, `{name}-{target}`
+  asset) and verifies it against the release `SHA256SUMS`, removing the
+  client-side `cargo build` from the common install path. Installs fall
+  back to building from source only when no prebuilt asset exists for the
+  host target.
+
 ## [0.2.1] — 2026-06-06
 
 ### Fixed
