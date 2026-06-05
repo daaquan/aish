@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+pub mod host;
 pub mod manifest;
 pub mod protocol;
 pub mod services;
