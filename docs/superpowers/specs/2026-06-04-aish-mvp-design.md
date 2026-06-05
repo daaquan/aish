@@ -224,7 +224,8 @@ aish commit --apply     # generate and commit without prompting
 
 ## Deferred to v0.2+
 
-- External plugin loader + manifest + ABI (subprocess plugins over stdio).
+- ~~External plugin loader + manifest + ABI (subprocess plugins over stdio).~~
+  **Done in v0.2** — see `docs/superpowers/specs/2026-06-05-plugin-system-design.md`.
 - Agent / tool-calling loop (multi-step reasoning).
 - Permission engine and richer audit policy.
 - Streaming responses (`Provider::stream`).

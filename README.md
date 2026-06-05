@@ -2,34 +2,47 @@
 
 <!-- SPDX-License-Identifier: MIT -->
 
-> Early scaffold. No application code yet — see [`docs/superpowers/specs/`](docs/superpowers/specs/) for design specs.
+> See [`docs/superpowers/specs/`](docs/superpowers/specs/) for design specs.
 
-## Usage (v0.1)
+## Plugins
+
+aish ships no tools by default. Install them from the plugin registry:
 
 ```bash
-# Generate a commit message from staged changes (interactive confirm)
-aish commit
-
-# Generate and apply immediately
-aish commit --apply
+aish plugin install commit     # build + install the commit plugin
+aish plugin list               # show installed plugins + state
+aish plugin disable commit     # turn it off without uninstalling
+aish plugin enable commit
+aish plugin uninstall commit
 ```
+
+Once installed:
+
+```bash
+git add .
+aish commit            # suggest a message, then [Y/n]
+aish commit --apply    # generate and commit without prompting
+```
+
+Plugins are trusted native executables built from source on install. The default
+registry is `git@github.com:daaquan/aish-plugins.git` (override with
+`AISH_REGISTRY`). See the [plugin system design](docs/superpowers/specs/2026-06-05-plugin-system-design.md)
+for the stdio ABI.
 
 ### JSON output (CI/CD)
 
-The global `--json` flag makes any command emit machine-readable JSON on stdout
-instead of human text. `config check --json` still exits nonzero on errors, so it
-works as a pipeline gate; `commit --json` is non-interactive (skips the `Accept?`
-prompt) — pass `--apply` to actually commit.
+The global `--json` flag makes built-in commands emit machine-readable JSON on
+stdout instead of human text. `config check --json` still exits nonzero on
+errors, so it works as a pipeline gate.
 
 ```bash
 aish config check --json        # {"ok":true|false,"issues":[...]} ; nonzero exit on errors
-aish commit --apply --json      # {"committed":true,"message":"...","model":"..."}
 aish usage --json               # {"by_model":{...},"total":{...}}
 ```
 
-> **Testing:** setting `AISH_PROVIDER=mock` makes `aish commit` return a canned
-> message (`$AISH_MOCK_REPLY`) without calling any provider — used by the test
-> suite and useful for offline/CI smoke checks.
+> **Testing:** setting `AISH_PROVIDER=mock` makes the host's `model.chat` service
+> return a canned message (`$AISH_MOCK_REPLY`) without calling any provider —
+> used by the test suite and useful for offline/CI smoke checks.
 
 ## Contributing
 
