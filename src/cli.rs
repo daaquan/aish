@@ -13,6 +13,9 @@ pub struct Cli {
     /// Print detailed error context.
     #[arg(long, global = true)]
     pub verbose: bool,
+    /// Emit machine-readable JSON instead of human text (for CI/CD).
+    #[arg(long, global = true)]
+    pub json: bool,
 }
 
 #[derive(Subcommand)]
@@ -34,6 +37,9 @@ pub enum Command {
         /// Add a DCO Signed-off-by trailer to the commit.
         #[arg(long)]
         signoff: bool,
+        /// Bypass the response cache (force a fresh model request).
+        #[arg(long)]
+        no_cache: bool,
     },
     /// Write a commented config template to ~/.aish/config.yaml.
     Config {
@@ -50,6 +56,8 @@ pub enum Command {
         #[command(subcommand)]
         action: ModelsAction,
     },
+    /// Report token usage and estimated cost from the audit log.
+    Usage,
 }
 
 #[derive(Subcommand)]
@@ -58,6 +66,8 @@ pub enum ConfigAction {
         #[arg(long)]
         force: bool,
     },
+    /// Validate the config and report problems without making any requests.
+    Check,
 }
 
 #[derive(Subcommand)]

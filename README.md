@@ -14,6 +14,19 @@ aish commit
 aish commit --apply
 ```
 
+### JSON output (CI/CD)
+
+The global `--json` flag makes any command emit machine-readable JSON on stdout
+instead of human text. `config check --json` still exits nonzero on errors, so it
+works as a pipeline gate; `commit --json` is non-interactive (skips the `Accept?`
+prompt) — pass `--apply` to actually commit.
+
+```bash
+aish config check --json        # {"ok":true|false,"issues":[...]} ; nonzero exit on errors
+aish commit --apply --json      # {"committed":true,"message":"...","model":"..."}
+aish usage --json               # {"by_model":{...},"total":{...}}
+```
+
 > **Testing:** setting `AISH_PROVIDER=mock` makes `aish commit` return a canned
 > message (`$AISH_MOCK_REPLY`) without calling any provider — used by the test
 > suite and useful for offline/CI smoke checks.

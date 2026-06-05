@@ -8,6 +8,7 @@ pub mod anthropic;
 pub mod gemini;
 pub mod mock;
 pub mod openai;
+pub mod retry;
 
 #[derive(Debug, Clone, Copy)]
 pub enum Role {
@@ -85,31 +86,30 @@ pub fn build_provider(
     r: &Resolved,
 ) -> Result<Box<dyn Provider>, ProviderError> {
     let pc = r.provider;
-    match provider_name {
+    let inner: Box<dyn Provider> = match provider_name {
         "anthropic" => {
             let key = pc.api_key.clone().ok_or_else(|| {
                 ProviderError::Request("anthropic provider missing api_key".into())
             })?;
-            Ok(Box::new(anthropic::Anthropic::new(key)))
+            Box::new(anthropic::Anthropic::new(key))
         }
         "google" | "gemini" => {
             let key = pc
                 .api_key
                 .clone()
                 .ok_or_else(|| ProviderError::Request("google provider missing api_key".into()))?;
-            Ok(Box::new(gemini::Gemini::new(key)))
+            Box::new(gemini::Gemini::new(key))
         }
         _ => {
             let base = pc
                 .base_url
                 .clone()
                 .unwrap_or_else(|| "https://api.openai.com/v1".into());
-            Ok(Box::new(openai::OpenAiCompat::new(
-                base,
-                pc.api_key.clone(),
-            )))
+            Box::new(openai::OpenAiCompat::new(base, pc.api_key.clone()))
         }
-    }
+    };
+    // Every real provider is wrapped so transient 429s are retried with backoff.
+    Ok(Box::new(retry::RetryProvider::new(inner)))
 }
 
 #[cfg(test)]

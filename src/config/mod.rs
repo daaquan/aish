@@ -29,6 +29,14 @@ pub struct ModelAlias {
     pub model: String,
 }
 
+/// Per-model price in USD per million tokens, keyed by the provider's model
+/// string (e.g. `claude-opus-4-8`). Used by `aish usage` to estimate cost.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ModelPricing {
+    pub input_per_mtok: f64,
+    pub output_per_mtok: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitConfig {
     #[serde(default = "default_style")]
@@ -55,6 +63,9 @@ pub struct Config {
     pub models: BTreeMap<String, ModelAlias>,
     #[serde(default = "default_commit")]
     pub commit: CommitConfig,
+    /// Optional model pricing for `aish usage` cost estimates. Keyed by model string.
+    #[serde(default)]
+    pub pricing: BTreeMap<String, ModelPricing>,
 }
 
 fn default_commit() -> CommitConfig {
@@ -109,7 +120,81 @@ impl Config {
     }
 }
 
+/// Severity of a config problem found by [`Config::validate`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IssueLevel {
+    /// Breaks functionality — the config will fail when used.
+    Error,
+    /// Suspicious but not fatal — the config may still work as intended.
+    Warning,
+}
+
+/// A single problem found by [`Config::validate`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Issue {
+    pub level: IssueLevel,
+    pub message: String,
+}
+
 impl Config {
+    /// Check the config for problems without making any network requests.
+    /// Issues are returned in a stable order (errors discovered while walking
+    /// models, then commit, then providers). An empty vec means the config is
+    /// sound. This is the proactive counterpart to the lazy checks in
+    /// [`resolve::resolve_model`], surfacing every problem up front rather than
+    /// only the one alias a command happens to use.
+    pub fn validate(&self) -> Vec<Issue> {
+        let mut issues = Vec::new();
+        // Every model alias must point at a declared provider.
+        for (alias, m) in &self.models {
+            if !self.providers.contains_key(&m.provider) {
+                issues.push(Issue {
+                    level: IssueLevel::Error,
+                    message: format!(
+                        "model alias `{alias}` references unknown provider `{}`",
+                        m.provider
+                    ),
+                });
+            }
+        }
+        // The default commit model must be a defined alias.
+        if !self.models.contains_key(&self.commit.model) {
+            issues.push(Issue {
+                level: IssueLevel::Error,
+                message: format!(
+                    "commit.model `{}` is not a defined model alias",
+                    self.commit.model
+                ),
+            });
+        }
+        // A provider with neither a key nor an endpoint cannot be reached.
+        for (name, p) in &self.providers {
+            if p.api_key.is_none() && p.base_url.is_none() {
+                issues.push(Issue {
+                    level: IssueLevel::Warning,
+                    message: format!("provider `{name}` has neither api_key nor base_url set"),
+                });
+            }
+        }
+        // A pricing entry that matches no alias's model string is dead config:
+        // `aish usage` can never apply it. Likely a typo or stale model name.
+        if !self.pricing.is_empty() {
+            let used: std::collections::BTreeSet<&str> =
+                self.models.values().map(|m| m.model.as_str()).collect();
+            for model in self.pricing.keys() {
+                if !used.contains(model.as_str()) {
+                    issues.push(Issue {
+                        level: IssueLevel::Warning,
+                        message: format!(
+                            "pricing entry `{model}` matches no model used by any alias"
+                        ),
+                    });
+                }
+            }
+        }
+        issues
+    }
+
     /// Commented YAML template for `aish config init`.
     pub fn template() -> &'static str {
         r#"# aish configuration (~/.aish/config.yaml)
@@ -133,6 +218,12 @@ commit:
   style: conventional
   language: en
   model: default
+
+# Optional. Prices in USD per 1,000,000 tokens, keyed by model string.
+# `aish usage` uses these to estimate cost; models without an entry show tokens only.
+# pricing:
+#   claude-opus-4-8: { input_per_mtok: 5.0, output_per_mtok: 25.0 }
+#   gpt-5-mini:      { input_per_mtok: 0.25, output_per_mtok: 2.0 }
 "#
     }
 
@@ -224,6 +315,73 @@ commit: { style: conventional, language: en, model: default }
         )
         .unwrap();
         assert!(cfg.providers["openai"].api_key.is_none());
+    }
+
+    #[test]
+    fn validate_accepts_sound_config() {
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }",
+        )
+        .unwrap();
+        assert!(cfg.validate().is_empty());
+    }
+
+    #[test]
+    fn validate_flags_alias_with_missing_provider() {
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: ghost, model: m }\ncommit: { style: conventional, language: en, model: default }",
+        )
+        .unwrap();
+        let issues = cfg.validate();
+        assert!(issues
+            .iter()
+            .any(|i| i.level == IssueLevel::Error && i.message.contains("ghost")));
+    }
+
+    #[test]
+    fn validate_flags_commit_model_not_an_alias() {
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: nope }",
+        )
+        .unwrap();
+        let issues = cfg.validate();
+        assert!(issues
+            .iter()
+            .any(|i| i.level == IssueLevel::Error && i.message.contains("nope")));
+    }
+
+    #[test]
+    fn validate_warns_on_pricing_for_unused_model() {
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }\npricing:\n  ghost-model: { input_per_mtok: 1.0, output_per_mtok: 2.0 }",
+        )
+        .unwrap();
+        let issues = cfg.validate();
+        assert!(issues
+            .iter()
+            .any(|i| i.level == IssueLevel::Warning && i.message.contains("ghost-model")));
+    }
+
+    #[test]
+    fn validate_accepts_pricing_for_used_model() {
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }\npricing:\n  m: { input_per_mtok: 1.0, output_per_mtok: 2.0 }",
+        )
+        .unwrap();
+        assert!(cfg.validate().is_empty());
+    }
+
+    #[test]
+    fn validate_warns_on_unconfigured_provider() {
+        std::env::remove_var("AISH_UNSET_VALIDATE_1");
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: ${AISH_UNSET_VALIDATE_1} }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }",
+        )
+        .unwrap();
+        let issues = cfg.validate();
+        assert!(issues
+            .iter()
+            .any(|i| i.level == IssueLevel::Warning && i.message.contains("openai")));
     }
 
     #[test]

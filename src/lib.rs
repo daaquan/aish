@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: MIT
 pub mod audit;
+pub mod cache;
 pub mod cli;
 pub mod config;
+pub mod editor;
 pub mod git;
 pub mod provider;
 pub mod tool;
+pub mod usage;

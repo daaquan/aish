@@ -14,14 +14,15 @@ pub struct AuditEntry {
     pub decision: String,
 }
 
-fn default_path() -> PathBuf {
+/// Path to the default audit log (`~/.aish/audit.log`).
+pub fn log_path() -> PathBuf {
     let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
     home.join(".aish").join("audit.log")
 }
 
 /// Append one JSONL record to the default audit log (`~/.aish/audit.log`).
 pub fn record(entry: &AuditEntry) -> std::io::Result<()> {
-    record_to(&default_path(), entry)
+    record_to(&log_path(), entry)
 }
 
 pub fn record_to(path: &Path, entry: &AuditEntry) -> std::io::Result<()> {

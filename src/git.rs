@@ -9,8 +9,17 @@ pub enum GitError {
     NotInstalled,
     #[error("not a git repository (or any parent)")]
     NotARepo,
-    #[error("git command failed: {0}")]
-    Failed(String),
+    #[error("failed to run `git`: {0}")]
+    Spawn(String),
+    #[error("`git {command}` failed (exit {code})\n{detail}")]
+    Failed {
+        /// The git subcommand that was invoked (e.g. `commit`).
+        command: String,
+        /// Exit code, or "signal" when terminated by a signal.
+        code: String,
+        /// Captured stderr, falling back to stdout when stderr is empty.
+        detail: String,
+    },
 }
 
 fn run(dir: &Path, args: &[&str]) -> Result<std::process::Output, GitError> {
@@ -22,9 +31,32 @@ fn run(dir: &Path, args: &[&str]) -> Result<std::process::Output, GitError> {
             if e.kind() == std::io::ErrorKind::NotFound {
                 GitError::NotInstalled
             } else {
-                GitError::Failed(e.to_string())
+                GitError::Spawn(e.to_string())
             }
         })
+}
+
+/// Run a git command and fail with rich context (subcommand, exit code, and
+/// stderr — or stdout when stderr is empty) if it exits non-zero.
+fn run_checked(dir: &Path, args: &[&str]) -> Result<std::process::Output, GitError> {
+    let out = run(dir, args)?;
+    if !out.status.success() {
+        let stderr = String::from_utf8_lossy(&out.stderr);
+        let detail = if stderr.trim().is_empty() {
+            String::from_utf8_lossy(&out.stdout).trim().to_string()
+        } else {
+            stderr.trim().to_string()
+        };
+        return Err(GitError::Failed {
+            command: args.first().copied().unwrap_or_default().to_string(),
+            code: out
+                .status
+                .code()
+                .map_or_else(|| "signal".to_string(), |c| c.to_string()),
+            detail,
+        });
+    }
+    Ok(out)
 }
 
 /// Return the staged diff (`git diff --cached`). Empty string if nothing staged.
@@ -33,12 +65,7 @@ pub fn staged_diff(dir: &Path) -> Result<String, GitError> {
     if !check.status.success() {
         return Err(GitError::NotARepo);
     }
-    let out = run(dir, &["diff", "--cached"])?;
-    if !out.status.success() {
-        return Err(GitError::Failed(
-            String::from_utf8_lossy(&out.stderr).into_owned(),
-        ));
-    }
+    let out = run_checked(dir, &["diff", "--cached"])?;
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
@@ -49,12 +76,7 @@ pub fn commit(dir: &Path, message: &str, signoff: bool) -> Result<(), GitError> 
     if signoff {
         args.push("-s");
     }
-    let out = run(dir, &args)?;
-    if !out.status.success() {
-        return Err(GitError::Failed(
-            String::from_utf8_lossy(&out.stderr).into_owned(),
-        ));
-    }
+    run_checked(dir, &args)?;
     Ok(())
 }
 
@@ -118,6 +140,45 @@ mod tests {
             .output()
             .unwrap();
         assert!(String::from_utf8_lossy(&log.stdout).contains("feat: add a"));
+    }
+
+    #[test]
+    fn failed_command_reports_subcommand_and_exit_code() {
+        // `git commit` in a non-repo exits non-zero; the error must name the
+        // subcommand, the exit code, and carry git's own diagnostic text.
+        let dir = tempdir().unwrap();
+        let err = commit(dir.path(), "feat: x", false).unwrap_err();
+        match &err {
+            GitError::Failed {
+                command,
+                code,
+                detail,
+            } => {
+                assert_eq!(command, "commit");
+                assert_ne!(code, "0");
+                assert!(!detail.is_empty(), "detail should carry git's stderr");
+            }
+            other => panic!("expected GitError::Failed, got {other:?}"),
+        }
+        let rendered = err.to_string();
+        assert!(rendered.contains("`git commit` failed"));
+        assert!(rendered.contains("(exit "));
+    }
+
+    #[test]
+    fn failed_command_falls_back_to_stdout_when_stderr_empty() {
+        // "nothing to commit" is written to stdout (not stderr) with exit 1.
+        let dir = init_repo();
+        let err = commit(dir.path(), "feat: nothing", false).unwrap_err();
+        match err {
+            GitError::Failed { detail, .. } => {
+                assert!(
+                    detail.contains("nothing to commit"),
+                    "stdout fallback should surface git's message, got: {detail:?}"
+                );
+            }
+            other => panic!("expected GitError::Failed, got {other:?}"),
+        }
     }
 
     #[test]
