@@ -140,9 +140,10 @@ pub async fn run_plugin_with(
         } else {
             timeouts.request
         };
-        let maybe_line = tokio::time::timeout(frame_timeout, read_frame_line(&mut reader))
-            .await
-            .map_err(|_| anyhow!("plugin `{}` timed out", manifest.name))??;
+        let maybe_line =
+            tokio::time::timeout(frame_timeout, read_frame_line(&mut reader, MAX_FRAME_BYTES))
+                .await
+                .map_err(|_| anyhow!("plugin `{}` timed out", manifest.name))??;
         first = false;
 
         let Some(line) = maybe_line else {
@@ -234,20 +235,35 @@ async fn write_frame<W: AsyncWriteExt + Unpin>(w: &mut W, frame: &Frame) -> Resu
     Ok(())
 }
 
-/// Read one newline-delimited frame, enforcing the size cap. `Ok(None)` on EOF.
-async fn read_frame_line<R: AsyncBufRead + AsyncBufReadExt + Unpin>(
+/// Read one newline-delimited frame, enforcing the size cap *during* the read so
+/// a plugin that never emits a newline cannot make us buffer without bound.
+/// `Ok(None)` on EOF.
+async fn read_frame_line<R: AsyncBufRead + Unpin>(
     reader: &mut R,
+    max: usize,
 ) -> Result<Option<String>> {
-    let mut line = String::new();
-    let n = reader.read_line(&mut line).await?;
+    let mut buf: Vec<u8> = Vec::new();
+    // `take` bounds the read itself: at most `max + 1` bytes are consumed
+    // regardless of whether a newline ever arrives. The `+ 1` headroom lets us
+    // tell a complete `max`-byte frame apart from one that overruns the cap.
+    let n = {
+        let mut limited = (&mut *reader).take(max as u64 + 1);
+        limited.read_until(b'\n', &mut buf).await?
+    };
     if n == 0 {
         return Ok(None);
     }
-    if line.len() > MAX_FRAME_BYTES {
-        return Err(anyhow!(
-            "protocol error: frame exceeds {MAX_FRAME_BYTES} bytes"
-        ));
+    // The cap applies to frame content, not the newline terminator.
+    let content_len = if buf.last() == Some(&b'\n') {
+        buf.len() - 1
+    } else {
+        buf.len()
+    };
+    if content_len > max {
+        return Err(anyhow!("protocol error: frame exceeds {max} bytes"));
     }
+    let line =
+        String::from_utf8(buf).map_err(|_| anyhow!("protocol error: frame is not valid UTF-8"))?;
     Ok(Some(line))
 }
 
@@ -260,4 +276,52 @@ fn tail(s: &str, max: usize) -> String {
         .find(|i| s.is_char_boundary(*i))
         .unwrap_or(s.len());
     format!("…{}", &s[start..])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn read_frame_line_returns_line_within_cap() {
+        let data = b"hello\n".to_vec();
+        let mut reader = BufReader::new(&data[..]);
+        let line = read_frame_line(&mut reader, 64).await.unwrap();
+        assert_eq!(line.as_deref(), Some("hello\n"));
+    }
+
+    #[tokio::test]
+    async fn read_frame_line_eof_returns_none() {
+        let data: &[u8] = b"";
+        let mut reader = BufReader::new(data);
+        assert_eq!(read_frame_line(&mut reader, 64).await.unwrap(), None);
+    }
+
+    #[tokio::test]
+    async fn read_frame_line_unterminated_final_line_within_cap() {
+        let data = b"tail-no-newline".to_vec();
+        let mut reader = BufReader::new(&data[..]);
+        let line = read_frame_line(&mut reader, 64).await.unwrap();
+        assert_eq!(line.as_deref(), Some("tail-no-newline"));
+    }
+
+    #[tokio::test]
+    async fn read_frame_line_accepts_unterminated_line_exactly_at_cap() {
+        // A final frame of exactly `max` bytes with no trailing newline is valid:
+        // the cap is on content, and EOF at the cap is not an overflow.
+        let data = [b'a'; 4];
+        let mut reader = BufReader::new(&data[..]);
+        let line = read_frame_line(&mut reader, 4).await.unwrap();
+        assert_eq!(line.as_deref(), Some("aaaa"));
+    }
+
+    #[tokio::test]
+    async fn read_frame_line_caps_unbounded_input() {
+        // Endless stream with no newline: must error at the cap, never hang or
+        // buffer without bound. Original read_line would loop here forever.
+        let src = tokio::io::repeat(b'a');
+        let mut reader = BufReader::new(src);
+        let err = read_frame_line(&mut reader, 64).await.unwrap_err();
+        assert!(err.to_string().contains("exceeds"));
+    }
 }
