@@ -9,10 +9,37 @@ use std::path::Path;
 use std::process::Stdio;
 use std::time::Duration;
 use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
-use tokio::process::Command;
+use tokio::process::{Child, Command};
 
-const STARTUP_TIMEOUT: Duration = Duration::from_secs(30);
-const REQUEST_TIMEOUT: Duration = Duration::from_secs(180);
+/// Largest stderr tail the host retains for crash diagnostics. A plugin spewing
+/// more than this only keeps its most recent bytes — the buffer never grows
+/// without bound.
+const MAX_STDERR_BYTES: usize = 64 * 1024;
+
+/// Deadlines the host enforces on a plugin. Production uses [`Timeouts::default`];
+/// tests inject short values to exercise each path quickly.
+#[derive(Debug, Clone, Copy)]
+pub struct Timeouts {
+    /// Waiting for the plugin's first frame after `invoke`.
+    pub startup: Duration,
+    /// Waiting for each subsequent frame from the plugin.
+    pub request: Duration,
+    /// Host-side handling of one plugin Request (e.g. a provider call).
+    pub service: Duration,
+    /// Reaping the child after a Result frame or EOF before we SIGKILL it.
+    pub wait: Duration,
+}
+
+impl Default for Timeouts {
+    fn default() -> Self {
+        Self {
+            startup: Duration::from_secs(30),
+            request: Duration::from_secs(180),
+            service: Duration::from_secs(120),
+            wait: Duration::from_secs(5),
+        }
+    }
+}
 
 /// Spawn an installed plugin and drive one invocation to completion.
 /// Returns the plugin's reported exit code.
@@ -23,6 +50,29 @@ pub async fn run_plugin(
     args: &[String],
     cwd: &Path,
     cfg: &Config,
+) -> Result<i32> {
+    run_plugin_with(
+        entry,
+        manifest,
+        subcommand,
+        args,
+        cwd,
+        cfg,
+        Timeouts::default(),
+    )
+    .await
+}
+
+/// Like [`run_plugin`] but with explicit [`Timeouts`] (used by tests).
+#[allow(clippy::too_many_arguments)]
+pub async fn run_plugin_with(
+    entry: &PluginEntry,
+    manifest: &Manifest,
+    subcommand: &str,
+    args: &[String],
+    cwd: &Path,
+    cfg: &Config,
+    timeouts: Timeouts,
 ) -> Result<i32> {
     if manifest.abi_major() != Some(ABI_MAJOR) {
         return Err(anyhow!(
@@ -51,11 +101,26 @@ pub async fn run_plugin(
     let stderr = child.stderr.take().unwrap();
     let mut reader = BufReader::new(stdout);
 
-    // Always drain stderr so a chatty plugin cannot deadlock the pipe.
+    // Always drain stderr so a chatty plugin cannot deadlock the pipe, but keep
+    // only the most recent MAX_STDERR_BYTES so a flood cannot grow the buffer
+    // without bound.
     let stderr_handle = tokio::spawn(async move {
-        let mut buf = String::new();
-        let _ = BufReader::new(stderr).read_to_string(&mut buf).await;
-        buf
+        let mut reader = BufReader::new(stderr);
+        let mut buf: Vec<u8> = Vec::new();
+        let mut chunk = [0u8; 4096];
+        loop {
+            match reader.read(&mut chunk).await {
+                Ok(0) | Err(_) => break,
+                Ok(n) => {
+                    buf.extend_from_slice(&chunk[..n]);
+                    if buf.len() > MAX_STDERR_BYTES {
+                        let excess = buf.len() - MAX_STDERR_BYTES;
+                        buf.drain(0..excess);
+                    }
+                }
+            }
+        }
+        String::from_utf8_lossy(&buf).into_owned()
     });
 
     let invoke = Frame::Invoke {
@@ -70,12 +135,12 @@ pub async fn run_plugin(
 
     let mut first = true;
     loop {
-        let timeout = if first {
-            STARTUP_TIMEOUT
+        let frame_timeout = if first {
+            timeouts.startup
         } else {
-            REQUEST_TIMEOUT
+            timeouts.request
         };
-        let maybe_line = tokio::time::timeout(timeout, read_frame_line(&mut reader))
+        let maybe_line = tokio::time::timeout(frame_timeout, read_frame_line(&mut reader))
             .await
             .map_err(|_| anyhow!("plugin `{}` timed out", manifest.name))??;
         first = false;
@@ -83,23 +148,38 @@ pub async fn run_plugin(
         let Some(line) = maybe_line else {
             // EOF before a result frame => crash.
             let stderr_tail = tail(&stderr_handle.await.unwrap_or_default(), 2000);
-            let status = child.wait().await?;
+            let status = reap(&mut child, timeouts.wait).await;
             return Err(anyhow!(
-                "plugin `{}` exited before sending a result (status {status}).\n{stderr_tail}",
+                "plugin `{}` exited before sending a result ({status}).\n{stderr_tail}",
                 manifest.name
             ));
         };
 
         match Frame::from_line(line.trim_end()) {
             Ok(Frame::Request { id, op, payload }) => {
-                let resp = match handle(&op, payload, manifest, cfg).await {
-                    Ok(payload) => Frame::Response {
+                // Bound host-side service work so a stalled provider call cannot
+                // hang the host indefinitely.
+                let handled =
+                    tokio::time::timeout(timeouts.service, handle(&op, payload, manifest, cfg))
+                        .await;
+                let resp = match handled {
+                    Err(_) => {
+                        let _ = child.kill().await;
+                        // Killing the child closes its stderr, so the drain task
+                        // finishes; surface its tail for diagnostics.
+                        let stderr_tail = tail(&stderr_handle.await.unwrap_or_default(), 2000);
+                        return Err(anyhow!(
+                            "plugin `{}` service call `{op}` timed out.\n{stderr_tail}",
+                            manifest.name
+                        ));
+                    }
+                    Ok(Ok(payload)) => Frame::Response {
                         id,
                         ok: true,
                         payload: Some(payload),
                         error: None,
                     },
-                    Err(ProtoError { code, message }) => Frame::Response {
+                    Ok(Err(ProtoError { code, message })) => Frame::Response {
                         id,
                         ok: false,
                         payload: None,
@@ -109,7 +189,7 @@ pub async fn run_plugin(
                 write_frame(&mut stdin, &resp).await?;
             }
             Ok(Frame::Result { ok, payload, .. }) => {
-                let _ = child.wait().await?;
+                let _ = reap(&mut child, timeouts.wait).await;
                 if ok {
                     return Ok(payload.get("exit").and_then(|v| v.as_i64()).unwrap_or(0) as i32);
                 }
@@ -128,6 +208,20 @@ pub async fn run_plugin(
                 let _ = child.kill().await;
                 return Err(anyhow!("protocol error: malformed frame: {e}"));
             }
+        }
+    }
+}
+
+/// Wait for the child to exit within `dur`; if it overstays its welcome, SIGKILL
+/// and reap it. Returns a human-readable status for diagnostics.
+async fn reap(child: &mut Child, dur: Duration) -> String {
+    match tokio::time::timeout(dur, child.wait()).await {
+        Ok(Ok(status)) => format!("status {status}"),
+        Ok(Err(e)) => format!("wait failed: {e}"),
+        Err(_) => {
+            let _ = child.kill().await;
+            let _ = child.wait().await;
+            "killed after exceeding wait timeout".to_string()
         }
     }
 }
