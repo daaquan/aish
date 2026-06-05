@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: MIT
 use assert_cmd::Command;
 use std::process::Command as Std;
 use tempfile::tempdir;

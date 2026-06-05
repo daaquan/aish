@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: MIT
 use crate::provider::{ChatRequest, ChatResponse, Provider, ProviderError, Usage};
 use async_trait::async_trait;
 

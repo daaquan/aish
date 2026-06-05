@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: MIT
 pub mod commit;
 
 /// Internal tool abstraction. In v0.1 only `CommitTool` implements it; the

@@ -14,8 +14,6 @@
 
 ## Checklist
 
-- [ ] One self-contained feature (no unrelated changes)
 - [ ] Title follows Conventional Commits (`feat|fix|refactor|docs|test|chore|perf|ci:`)
-- [ ] All commits are DCO signed (`git commit -s`)
 - [ ] Docs updated if behavior changed
 - [ ] Branch is up to date with `main`
