@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: MIT
 use clap::{Parser, Subcommand};
+use std::ffi::OsString;
 
 #[derive(Parser)]
 #[command(
@@ -42,9 +43,10 @@ pub enum Command {
         #[command(subcommand)]
         action: PluginAction,
     },
-    /// Any other subcommand is dispatched to an installed plugin.
+    /// Any other subcommand is dispatched to an installed plugin. Captured as
+    /// `OsString` so non-UTF-8 argv reaches us intact for a clean rejection.
     #[command(external_subcommand)]
-    External(Vec<String>),
+    External(Vec<OsString>),
 }
 
 #[derive(Subcommand)]

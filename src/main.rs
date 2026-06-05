@@ -279,12 +279,31 @@ fn set_enabled(name: &str, enabled: bool) -> Result<()> {
     Ok(())
 }
 
-async fn dispatch_external(args: Vec<String>) -> Result<()> {
-    let subcommand = args
-        .first()
-        .cloned()
-        .ok_or_else(|| anyhow!("no subcommand given"))?;
-    let rest = &args[1..];
+/// Split raw external argv into a UTF-8 subcommand plus its arguments, failing
+/// cleanly on non-UTF-8 input. The plugin protocol is newline-delimited JSON
+/// (UTF-8), so non-UTF-8 argv cannot be forwarded — reject it with a clear error
+/// instead of letting clap surface a generic one.
+fn split_external_args(args: Vec<std::ffi::OsString>) -> Result<(String, Vec<String>)> {
+    let mut iter = args.into_iter();
+    let first = iter.next().ok_or_else(|| anyhow!("no subcommand given"))?;
+    let subcommand = first
+        .into_string()
+        .map_err(|bad| anyhow!("subcommand is not valid UTF-8: {bad:?}"))?;
+    let mut rest = Vec::new();
+    for (i, arg) in iter.enumerate() {
+        let s = arg.into_string().map_err(|bad| {
+            anyhow!(
+                "argument {} to `{subcommand}` is not valid UTF-8: {bad:?}",
+                i + 1
+            )
+        })?;
+        rest.push(s);
+    }
+    Ok((subcommand, rest))
+}
+
+async fn dispatch_external(args: Vec<std::ffi::OsString>) -> Result<()> {
+    let (subcommand, rest) = split_external_args(args)?;
     let cfg = Config::load()?;
     let reg = InstalledRegistry::load(&install::plugins_toml())?;
     let (_name, entry) = reg.find_by_subcommand(&subcommand).ok_or_else(|| {
@@ -297,9 +316,48 @@ async fn dispatch_external(args: Vec<String>) -> Result<()> {
     let manifest = Manifest::from_toml(&std::fs::read_to_string(&manifest_path)?)
         .map_err(|e| anyhow!("reading installed manifest: {e}"))?;
     let cwd = std::env::current_dir()?;
-    let code = run_plugin(entry, &manifest, &subcommand, rest, &cwd, &cfg).await?;
+    let code = run_plugin(entry, &manifest, &subcommand, &rest, &cwd, &cfg).await?;
     if code != 0 {
         std::process::exit(code);
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::ffi::OsString;
+
+    #[test]
+    fn split_external_splits_subcommand_and_rest() {
+        let args = vec![OsString::from("commit"), OsString::from("--amend")];
+        let (sub, rest) = split_external_args(args).unwrap();
+        assert_eq!(sub, "commit");
+        assert_eq!(rest, vec!["--amend".to_string()]);
+    }
+
+    #[test]
+    fn split_external_empty_errors() {
+        let err = split_external_args(vec![]).unwrap_err();
+        assert!(err.to_string().contains("no subcommand"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn split_external_rejects_non_utf8_arg() {
+        use std::os::unix::ffi::OsStringExt;
+        let bad = OsString::from_vec(vec![b'g', b'o', 0xff, 0xfe]);
+        let args = vec![OsString::from("commit"), bad];
+        let err = split_external_args(args).unwrap_err();
+        assert!(err.to_string().contains("not valid UTF-8"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn split_external_rejects_non_utf8_subcommand() {
+        use std::os::unix::ffi::OsStringExt;
+        let bad = OsString::from_vec(vec![0xff, 0xfe]);
+        let err = split_external_args(vec![bad]).unwrap_err();
+        assert!(err.to_string().contains("not valid UTF-8"));
+    }
 }
