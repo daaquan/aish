@@ -1,0 +1,25 @@
+name: audit
+
+# Automated dependency security auditing. `cargo audit` checks Cargo.lock against
+# the RustSec advisory database for known vulnerabilities in our dependency tree
+# (direct and transitive). It runs on dependency changes AND on a weekly schedule,
+# because new advisories are published against code that never changes.
+on:
+  push:
+    paths: ["Cargo.toml", "Cargo.lock", ".github/workflows/audit.yml"]
+  pull_request:
+    paths: ["Cargo.toml", "Cargo.lock", ".github/workflows/audit.yml"]
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch:
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+      - run: cargo audit --deny warnings
