@@ -176,6 +176,22 @@ impl Config {
                 });
             }
         }
+        // A pricing entry that matches no alias's model string is dead config:
+        // `aish usage` can never apply it. Likely a typo or stale model name.
+        if !self.pricing.is_empty() {
+            let used: std::collections::BTreeSet<&str> =
+                self.models.values().map(|m| m.model.as_str()).collect();
+            for model in self.pricing.keys() {
+                if !used.contains(model.as_str()) {
+                    issues.push(Issue {
+                        level: IssueLevel::Warning,
+                        message: format!(
+                            "pricing entry `{model}` matches no model used by any alias"
+                        ),
+                    });
+                }
+            }
+        }
         issues
     }
 
@@ -332,6 +348,27 @@ commit: { style: conventional, language: en, model: default }
         assert!(issues
             .iter()
             .any(|i| i.level == IssueLevel::Error && i.message.contains("nope")));
+    }
+
+    #[test]
+    fn validate_warns_on_pricing_for_unused_model() {
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }\npricing:\n  ghost-model: { input_per_mtok: 1.0, output_per_mtok: 2.0 }",
+        )
+        .unwrap();
+        let issues = cfg.validate();
+        assert!(issues
+            .iter()
+            .any(|i| i.level == IssueLevel::Warning && i.message.contains("ghost-model")));
+    }
+
+    #[test]
+    fn validate_accepts_pricing_for_used_model() {
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }\npricing:\n  m: { input_per_mtok: 1.0, output_per_mtok: 2.0 }",
+        )
+        .unwrap();
+        assert!(cfg.validate().is_empty());
     }
 
     #[test]
