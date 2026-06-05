@@ -19,14 +19,29 @@ pub fn available_services(m: &Manifest) -> Vec<String> {
     v
 }
 
-/// The sanitized config slice forwarded to a plugin in the `invoke` frame.
-/// NEVER includes provider keys. v0.2 forwards the commit settings for all tools.
-pub fn scoped_config(cfg: &Config) -> serde_json::Value {
-    serde_json::json!({
-        "style": cfg.commit.style,
-        "language": cfg.commit.language,
-        "model": cfg.commit.model,
-    })
+/// The sanitized config slice forwarded to `plugin` in the `invoke` frame: its
+/// own `[plugins.<name>]` table and nothing else. NEVER includes provider keys.
+///
+/// Back-compat: the deprecated top-level `commit:` block still feeds the commit
+/// plugin, back-filling any key `[plugins.commit]` does not set.
+pub fn scoped_config(cfg: &Config, plugin: &str) -> serde_json::Value {
+    let mut out = cfg
+        .plugins
+        .get(plugin)
+        .and_then(|v| serde_json::to_value(v).ok())
+        .and_then(|v| v.as_object().cloned())
+        .unwrap_or_default();
+
+    if plugin == "commit" {
+        for (k, v) in [
+            ("style", serde_json::json!(cfg.commit.style)),
+            ("language", serde_json::json!(cfg.commit.language)),
+            ("model", serde_json::json!(cfg.commit.model)),
+        ] {
+            out.entry(k.to_string()).or_insert(v);
+        }
+    }
+    serde_json::Value::Object(out)
 }
 
 fn role_from_wire(r: &str) -> Role {
@@ -186,9 +201,44 @@ mod tests {
 
     #[tokio::test]
     async fn scoped_config_excludes_secrets() {
-        let v = scoped_config(&cfg());
+        let v = scoped_config(&cfg(), "commit");
         assert_eq!(v["style"], "conventional");
         assert!(v.get("providers").is_none());
         assert!(!v.to_string().contains("sk-x"));
+    }
+
+    /// The deprecated top-level `commit:` block still reaches the commit plugin.
+    #[tokio::test]
+    async fn scoped_config_commit_backfills_from_top_level() {
+        let v = scoped_config(&cfg(), "commit");
+        assert_eq!(v["style"], "conventional");
+        assert_eq!(v["language"], "en");
+        assert_eq!(v["model"], "default");
+    }
+
+    /// A non-commit plugin must NOT receive commit settings — only its own table.
+    #[tokio::test]
+    async fn scoped_config_other_plugin_is_isolated() {
+        let c = Config::from_yaml(
+            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }\nplugins:\n  jira: { project: ABC, url: https://x }\n",
+        )
+        .unwrap();
+        let v = scoped_config(&c, "jira");
+        assert_eq!(v["project"], "ABC");
+        assert!(v.get("style").is_none(), "commit settings leaked to jira");
+        let unknown = scoped_config(&c, "nope");
+        assert_eq!(unknown, serde_json::json!({}));
+    }
+
+    /// An explicit `[plugins.commit]` key overrides the deprecated top-level one.
+    #[tokio::test]
+    async fn scoped_config_plugins_commit_overrides_top_level() {
+        let c = Config::from_yaml(
+            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }\nplugins:\n  commit: { style: gitmoji }\n",
+        )
+        .unwrap();
+        let v = scoped_config(&c, "commit");
+        assert_eq!(v["style"], "gitmoji"); // override wins
+        assert_eq!(v["language"], "en"); // unset key still back-fills
     }
 }

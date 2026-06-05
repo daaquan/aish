@@ -128,7 +128,7 @@ pub async fn run_plugin_with(
         subcommand: subcommand.to_string(),
         args: args.to_vec(),
         cwd: cwd.display().to_string(),
-        config: scoped_config(cfg),
+        config: scoped_config(cfg, &manifest.name),
         services: available_services(manifest),
     };
     write_frame(&mut stdin, &invoke).await?;
