@@ -114,6 +114,28 @@ pub fn render(summary: &Summary) -> String {
     out
 }
 
+/// Serialize a summary as JSON for `aish usage --json`. Per-model rows are keyed
+/// `provider/model`; `cost` is `null` when the model has no pricing entry.
+pub fn to_json(summary: &Summary) -> serde_json::Value {
+    fn stats(s: &Stats) -> serde_json::Value {
+        serde_json::json!({
+            "calls": s.calls,
+            "prompt_tokens": s.prompt_tokens,
+            "completion_tokens": s.completion_tokens,
+            "cost": s.cost,
+        })
+    }
+    let by_model: serde_json::Map<String, serde_json::Value> = summary
+        .by_model
+        .iter()
+        .map(|(k, s)| (k.clone(), stats(s)))
+        .collect();
+    serde_json::json!({
+        "by_model": by_model,
+        "total": stats(&summary.total),
+    })
+}
+
 fn fmt_cost(cost: Option<f64>) -> String {
     match cost {
         Some(c) => format!("${c:.4}"),
@@ -203,5 +225,22 @@ mod tests {
         assert!(out.contains("openai/gpt-5-mini"));
         assert!(out.contains("TOTAL"));
         assert!(out.contains("$1.0000"));
+    }
+
+    #[test]
+    fn to_json_emits_rows_total_and_null_cost() {
+        let s = summarize(
+            [
+                r#"{"provider":"openai","model":"gpt-5-mini","prompt_tokens":1000000,"completion_tokens":0}"#,
+                r#"{"provider":"anthropic","model":"claude-x","prompt_tokens":10,"completion_tokens":5}"#,
+            ],
+            &pricing(),
+        );
+        let v = to_json(&s);
+        assert_eq!(v["by_model"]["openai/gpt-5-mini"]["cost"], 1.0);
+        // Unknown model -> cost null, not absent.
+        assert!(v["by_model"]["anthropic/claude-x"]["cost"].is_null());
+        assert_eq!(v["total"]["calls"], 2);
+        assert_eq!(v["total"]["prompt_tokens"], 1000010);
     }
 }

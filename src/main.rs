@@ -25,30 +25,50 @@ async fn main() {
 }
 
 async fn run(cli: Cli) -> Result<()> {
+    let json = cli.json;
     match cli.command {
         Command::Config { action } => match action {
             ConfigAction::Init { force } => {
                 let path = Config::default_path();
                 Config::write_template(&path, force)
                     .with_context(|| format!("writing config to {}", path.display()))?;
-                println!("Wrote config template to {}", path.display());
+                if json {
+                    emit_json(&serde_json::json!({ "wrote": path.display().to_string() }));
+                } else {
+                    println!("Wrote config template to {}", path.display());
+                }
                 Ok(())
             }
-            ConfigAction::Check => run_config_check(),
+            ConfigAction::Check => run_config_check(json),
         },
         Command::Providers {
             action: ProvidersAction::List,
         } => {
             let cfg = Config::load()?;
-            for (name, p) in &cfg.providers {
-                let status = if p.api_key.is_some() {
-                    "key set"
-                } else if p.base_url.is_some() {
-                    "endpoint set"
-                } else {
-                    "unconfigured"
-                };
-                println!("{name:12} {status}");
+            if json {
+                let rows: Vec<_> = cfg
+                    .providers
+                    .iter()
+                    .map(|(name, p)| {
+                        serde_json::json!({
+                            "name": name,
+                            "api_key": p.api_key.is_some(),
+                            "base_url": p.base_url,
+                        })
+                    })
+                    .collect();
+                emit_json(&serde_json::json!(rows));
+            } else {
+                for (name, p) in &cfg.providers {
+                    let status = if p.api_key.is_some() {
+                        "key set"
+                    } else if p.base_url.is_some() {
+                        "endpoint set"
+                    } else {
+                        "unconfigured"
+                    };
+                    println!("{name:12} {status}");
+                }
             }
             Ok(())
         }
@@ -56,8 +76,23 @@ async fn run(cli: Cli) -> Result<()> {
             action: ModelsAction::List,
         } => {
             let cfg = Config::load()?;
-            for (alias, m) in &cfg.models {
-                println!("{alias:10} -> {}/{}", m.provider, m.model);
+            if json {
+                let rows: Vec<_> = cfg
+                    .models
+                    .iter()
+                    .map(|(alias, m)| {
+                        serde_json::json!({
+                            "alias": alias,
+                            "provider": m.provider,
+                            "model": m.model,
+                        })
+                    })
+                    .collect();
+                emit_json(&serde_json::json!(rows));
+            } else {
+                for (alias, m) in &cfg.models {
+                    println!("{alias:10} -> {}/{}", m.provider, m.model);
+                }
             }
             Ok(())
         }
@@ -66,7 +101,11 @@ async fn run(cli: Cli) -> Result<()> {
             let lines =
                 aish::usage::read_log(&audit::log_path()).with_context(|| "reading audit log")?;
             let summary = aish::usage::summarize(lines, &cfg.pricing);
-            print!("{}", aish::usage::render(&summary));
+            if json {
+                emit_json(&aish::usage::to_json(&summary));
+            } else {
+                print!("{}", aish::usage::render(&summary));
+            }
             Ok(())
         }
         Command::Commit {
@@ -76,33 +115,58 @@ async fn run(cli: Cli) -> Result<()> {
             lang,
             signoff,
             no_cache,
-        } => run_commit(apply, model, style, lang, signoff, no_cache).await,
+        } => run_commit(apply, model, style, lang, signoff, no_cache, json).await,
     }
 }
 
-fn run_config_check() -> Result<()> {
+/// Print a JSON value to stdout (pretty-printed), the single sink for `--json` output.
+fn emit_json(value: &serde_json::Value) {
+    println!("{}", serde_json::to_string_pretty(value).unwrap());
+}
+
+fn run_config_check(json: bool) -> Result<()> {
     use aish::config::IssueLevel;
     let cfg = Config::load()?;
     let issues = cfg.validate();
-    if issues.is_empty() {
+    let errors = issues
+        .iter()
+        .filter(|i| i.level == IssueLevel::Error)
+        .count();
+
+    if json {
+        let rows: Vec<_> = issues
+            .iter()
+            .map(|i| {
+                let level = match i.level {
+                    IssueLevel::Error => "error",
+                    IssueLevel::Warning => "warning",
+                };
+                serde_json::json!({ "level": level, "message": i.message })
+            })
+            .collect();
+        emit_json(&serde_json::json!({
+            "ok": errors == 0,
+            "providers": cfg.providers.len(),
+            "models": cfg.models.len(),
+            "issues": rows,
+        }));
+    } else if issues.is_empty() {
         println!(
             "Config OK: {} provider(s), {} model alias(es).",
             cfg.providers.len(),
             cfg.models.len()
         );
-        return Ok(());
+    } else {
+        for issue in &issues {
+            let tag = match issue.level {
+                IssueLevel::Error => "error",
+                IssueLevel::Warning => "warning",
+            };
+            println!("{tag}: {}", issue.message);
+        }
     }
-    let mut errors = 0usize;
-    for issue in &issues {
-        let tag = match issue.level {
-            IssueLevel::Error => {
-                errors += 1;
-                "error"
-            }
-            IssueLevel::Warning => "warning",
-        };
-        println!("{tag}: {}", issue.message);
-    }
+
+    // Nonzero exit on errors regardless of format, so CI gates fail correctly.
     if errors > 0 {
         return Err(anyhow!("config has {errors} error(s)"));
     }
@@ -116,13 +180,22 @@ async fn run_commit(
     lang: Option<String>,
     signoff: bool,
     no_cache: bool,
+    json: bool,
 ) -> Result<()> {
     let cfg = Config::load()?;
     let cwd = std::env::current_dir()?;
 
     let diff = git::staged_diff(&cwd)?;
     if diff.trim().is_empty() {
-        println!("Nothing staged. Run `git add` first.");
+        if json {
+            emit_json(&serde_json::json!({
+                "committed": false,
+                "message": serde_json::Value::Null,
+                "note": "nothing staged",
+            }));
+        } else {
+            println!("Nothing staged. Run `git add` first.");
+        }
         return Ok(());
     }
 
@@ -138,13 +211,17 @@ async fn run_commit(
 
     // Deterministic cache: an identical request (same diff, model, style, language)
     // reuses the stored message and skips the model request entirely.
+    let mut cached = false;
     let (message, usage) = match (!no_cache)
         .then(|| aish::cache::get(&cache_dir, &cache_key))
         .flatten()
     {
-        Some(cached) => {
-            println!("(cached — no model request made)");
-            (cached, aish::provider::Usage::default())
+        Some(hit) => {
+            cached = true;
+            if !json {
+                println!("(cached — no model request made)");
+            }
+            (hit, aish::provider::Usage::default())
         }
         None => {
             // Test hook: AISH_PROVIDER=mock returns a canned message without network.
@@ -181,12 +258,20 @@ async fn run_commit(
         }
     };
 
-    println!("\nSuggested commit:\n\n{message}\n");
+    if !json {
+        println!("\nSuggested commit:\n\n{message}\n");
+    }
 
     let decision = if apply {
         git::commit(&cwd, &message, signoff)?;
-        println!("Committed.");
+        if !json {
+            println!("Committed.");
+        }
         "applied"
+    } else if json {
+        // JSON mode is non-interactive: emit the suggestion without committing.
+        // CI that wants to commit passes `--apply --json`.
+        "suggested"
     } else {
         print!("Accept? [Y/n/e(dit)] ");
         std::io::stdout().flush()?;
@@ -218,6 +303,19 @@ async fn run_commit(
             }
         }
     };
+
+    if json {
+        emit_json(&serde_json::json!({
+            "message": message,
+            "decision": decision,
+            "committed": decision == "applied" || decision == "edited",
+            "cached": cached,
+            "provider": resolved.provider_name.clone(),
+            "model": resolved.model.clone(),
+            "prompt_tokens": usage.prompt_tokens,
+            "completion_tokens": usage.completion_tokens,
+        }));
+    }
 
     let _ = audit::record(&audit::AuditEntry {
         tool: "git.commit.message.generate".into(),

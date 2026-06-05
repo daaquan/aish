@@ -293,6 +293,120 @@ commit: { style: conventional, language: en, model: default }
 }
 
 #[test]
+fn commit_apply_json_emits_machine_readable_result() {
+    let repo = tempdir().unwrap();
+    let cfg = tempdir().unwrap();
+    let cfg_path = cfg.path().join("config.yaml");
+    std::fs::write(
+        &cfg_path,
+        r#"
+providers:
+  openai: { api_key: sk-x }
+models:
+  default: { provider: openai, model: gpt-5-mini }
+commit: { style: conventional, language: en, model: default }
+"#,
+    )
+    .unwrap();
+
+    git(repo.path(), &["init", "-q"]);
+    git(repo.path(), &["config", "user.email", "t@e.st"]);
+    git(repo.path(), &["config", "user.name", "t"]);
+    git(repo.path(), &["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.path().join("a.txt"), "hello").unwrap();
+    git(repo.path(), &["add", "a.txt"]);
+
+    let out = Command::cargo_bin("aish")
+        .unwrap()
+        .current_dir(repo.path())
+        .env("AISH_CONFIG", &cfg_path)
+        .env("AISH_PROVIDER", "mock")
+        .env("AISH_MOCK_REPLY", "feat: add greeting file")
+        .env("HOME", cfg.path())
+        .args(["commit", "--apply", "--json"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    // Stdout must be pure, parseable JSON (no human prose mixed in).
+    let v: serde_json::Value = serde_json::from_slice(&out).expect("stdout is valid JSON");
+    assert_eq!(v["committed"], true);
+    assert_eq!(v["decision"], "applied");
+    assert_eq!(v["message"], "feat: add greeting file");
+    assert_eq!(v["provider"], "openai");
+    assert_eq!(v["model"], "gpt-5-mini");
+}
+
+#[test]
+fn commit_json_without_apply_suggests_without_committing() {
+    let repo = tempdir().unwrap();
+    let cfg = tempdir().unwrap();
+    let cfg_path = cfg.path().join("config.yaml");
+    std::fs::write(&cfg_path, "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: gpt-5-mini }\ncommit: { style: conventional, language: en, model: default }\n").unwrap();
+    git(repo.path(), &["init", "-q"]);
+    git(repo.path(), &["config", "user.email", "t@e.st"]);
+    git(repo.path(), &["config", "user.name", "t"]);
+    git(repo.path(), &["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.path().join("a.txt"), "hi").unwrap();
+    git(repo.path(), &["add", "a.txt"]);
+
+    let out = Command::cargo_bin("aish")
+        .unwrap()
+        .current_dir(repo.path())
+        .env("AISH_CONFIG", &cfg_path)
+        .env("AISH_PROVIDER", "mock")
+        .env("AISH_MOCK_REPLY", "feat: suggested only")
+        .env("HOME", cfg.path())
+        .args(["commit", "--json"]) // no --apply, no stdin: must not block or commit
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+
+    let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(v["committed"], false);
+    assert_eq!(v["decision"], "suggested");
+    assert_eq!(v["message"], "feat: suggested only");
+
+    let log = Std::new("git")
+        .current_dir(repo.path())
+        .args(["log", "--oneline"])
+        .output()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&log.stdout).trim().is_empty());
+}
+
+#[test]
+fn config_check_json_reports_errors_and_fails() {
+    let cfg = tempdir().unwrap();
+    let cfg_path = cfg.path().join("config.yaml");
+    // Alias points at an undeclared provider -> one error.
+    std::fs::write(&cfg_path, "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: ghost, model: m }\ncommit: { style: conventional, language: en, model: default }\n").unwrap();
+
+    let out = Command::cargo_bin("aish")
+        .unwrap()
+        .env("AISH_CONFIG", &cfg_path)
+        .env("HOME", cfg.path())
+        .args(["config", "check", "--json"])
+        .assert()
+        .failure() // nonzero exit so CI gates fail
+        .get_output()
+        .stdout
+        .clone();
+
+    let v: serde_json::Value = serde_json::from_slice(&out).unwrap();
+    assert_eq!(v["ok"], false);
+    assert!(v["issues"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|i| i["level"] == "error" && i["message"].as_str().unwrap().contains("ghost")));
+}
+
+#[test]
 fn commit_reports_nothing_staged() {
     let repo = tempdir().unwrap();
     let cfg = tempdir().unwrap();

@@ -13,6 +13,9 @@ pub struct Cli {
     /// Print detailed error context.
     #[arg(long, global = true)]
     pub verbose: bool,
+    /// Emit machine-readable JSON instead of human text (for CI/CD).
+    #[arg(long, global = true)]
+    pub json: bool,
 }
 
 #[derive(Subcommand)]
