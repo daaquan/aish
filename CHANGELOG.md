@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.1] — 2026-06-06
+
+### Fixed
+
+- Improved `aish plugin install` diagnostics when Cargo cannot find the Rust
+  standard library for the host target, including a concrete `rustup target add`
+  recovery command.
+
 ## [0.2.0] — 2026-06-05
 
 ### Added
@@ -56,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` install script and project governance foundation
   (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, design specs).
 
-[Unreleased]: https://github.com/daaquan/aish/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/daaquan/aish/compare/v0.2.1...HEAD
+[0.2.1]: https://github.com/daaquan/aish/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/daaquan/aish/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/daaquan/aish/releases/tag/v0.1.0
