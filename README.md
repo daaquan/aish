@@ -10,6 +10,7 @@ aish ships no tools by default. Install them from the plugin registry:
 
 ```bash
 aish plugin install commit     # build + install the commit plugin
+aish plugin update commit      # rebuild + reinstall (omit name for all)
 aish plugin list               # show installed plugins + state
 aish plugin disable commit     # turn it off without uninstalling
 aish plugin enable commit
