@@ -56,6 +56,17 @@ fn install_then_commit_end_to_end() {
         .success()
         .stdout(predicates::str::contains("commit"));
 
+    // Updating an installed plugin rebuilds + reinstalls in place and succeeds.
+    Command::cargo_bin("aish")
+        .unwrap()
+        .env("AISH_HOME", home.path())
+        .env("AISH_CONFIG", &cfg_path)
+        .env("AISH_REGISTRY", &registry)
+        .args(["plugin", "update", "commit"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("commit"));
+
     // Run `aish commit --apply` in a temp repo via the mock provider.
     let repo = tempdir().unwrap();
     git(repo.path(), &["init", "-q"]);

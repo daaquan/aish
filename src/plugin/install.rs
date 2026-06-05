@@ -295,6 +295,25 @@ pub fn install_from_registry(source: &RegistrySource, name: &str) -> Result<Plug
     install_built(&manifest, &bin, &source_str, &revision)
 }
 
+/// Update an already-installed plugin: re-resolve the registry, rebuild, and
+/// reinstall in place via the crash-safe swap. Errors if the plugin is not
+/// currently installed. Returns `(old_entry, new_entry)` for diff reporting.
+pub fn update_from_registry(
+    source: &RegistrySource,
+    name: &str,
+) -> Result<(PluginEntry, PluginEntry)> {
+    let reg = InstalledRegistry::load(&plugins_toml())?;
+    let old = reg
+        .plugins
+        .get(name)
+        .ok_or_else(|| {
+            anyhow!("plugin `{name}` is not installed — use `aish plugin install {name}`")
+        })?
+        .clone();
+    let new = install_from_registry(source, name)?;
+    Ok((old, new))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -360,6 +379,17 @@ mod tests {
         let reg = InstalledRegistry::load(&plugins_toml()).unwrap();
         assert_eq!(reg.plugins["demo"].source, "local");
         verify_sha256(&entry.path, &entry.binary_sha256).unwrap();
+        std::env::remove_var("AISH_HOME");
+    }
+
+    #[test]
+    fn update_unknown_plugin_errors() {
+        let home = tempdir().unwrap();
+        std::env::set_var("AISH_HOME", home.path());
+        let src = tempdir().unwrap();
+        let err =
+            update_from_registry(&RegistrySource::Local(src.path().into()), "nope").unwrap_err();
+        assert!(err.to_string().contains("not installed"));
         std::env::remove_var("AISH_HOME");
     }
 

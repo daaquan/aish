@@ -37,7 +37,7 @@ pub enum Command {
     },
     /// Report token usage and estimated cost from the audit log.
     Usage,
-    /// Manage tool plugins (install / list / enable / disable / uninstall).
+    /// Manage tool plugins (install / update / list / enable / disable / uninstall).
     Plugin {
         #[command(subcommand)]
         action: PluginAction,
@@ -76,6 +76,11 @@ pub enum PluginAction {
         /// Skip the trusted-code confirmation prompt.
         #[arg(long)]
         yes: bool,
+    },
+    /// Rebuild and reinstall a plugin from the registry (or all if no name).
+    Update {
+        /// Plugin to update; omit to update every installed plugin.
+        name: Option<String>,
     },
     /// List installed plugins.
     List,

@@ -198,6 +198,35 @@ async fn run_plugin_cmd(action: PluginAction) -> Result<()> {
             );
             Ok(())
         }
+        PluginAction::Update { name } => {
+            let source = registry_source();
+            let names = match name {
+                Some(n) => vec![n],
+                None => {
+                    let reg = InstalledRegistry::load(&install::plugins_toml())?;
+                    reg.plugins.keys().cloned().collect()
+                }
+            };
+            if names.is_empty() {
+                println!("No plugins installed.");
+                return Ok(());
+            }
+            for n in names {
+                let (old, new) = install::update_from_registry(&source, &n)?;
+                if old.version == new.version && old.revision == new.revision {
+                    println!(
+                        "`{n}` already up to date ({} @ {}).",
+                        new.version, new.revision
+                    );
+                } else {
+                    println!(
+                        "Updated `{n}` {} ({}) -> {} ({}).",
+                        old.version, old.revision, new.version, new.revision
+                    );
+                }
+            }
+            Ok(())
+        }
         PluginAction::List => {
             let reg = InstalledRegistry::load(&install::plugins_toml())?;
             if reg.plugins.is_empty() {
