@@ -57,6 +57,108 @@ commit: { style: conventional, language: en, model: default }
 }
 
 #[test]
+fn commit_edit_opens_editor_and_commits_edited_message() {
+    let repo = tempdir().unwrap();
+    let cfg = tempdir().unwrap();
+    let cfg_path = cfg.path().join("config.yaml");
+    std::fs::write(
+        &cfg_path,
+        r#"
+providers:
+  openai: { api_key: sk-x }
+models:
+  default: { provider: openai, model: gpt-5-mini }
+commit: { style: conventional, language: en, model: default }
+"#,
+    )
+    .unwrap();
+
+    git(repo.path(), &["init", "-q"]);
+    git(repo.path(), &["config", "user.email", "t@e.st"]);
+    git(repo.path(), &["config", "user.name", "t"]);
+    git(repo.path(), &["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.path().join("a.txt"), "hello").unwrap();
+    git(repo.path(), &["add", "a.txt"]);
+
+    // Non-interactive "editor": overwrite the message file with edited text.
+    Command::cargo_bin("aish")
+        .unwrap()
+        .current_dir(repo.path())
+        .env("AISH_CONFIG", &cfg_path)
+        .env("AISH_PROVIDER", "mock")
+        .env("AISH_MOCK_REPLY", "feat: ai suggestion")
+        .env("HOME", cfg.path())
+        .env("EDITOR", "printf 'fix: hand-edited subject' >")
+        .args(["commit"])
+        .write_stdin("e\n")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Committed"));
+
+    let log = Std::new("git")
+        .current_dir(repo.path())
+        .args(["log", "-1", "--format=%B"])
+        .output()
+        .unwrap();
+    let body = String::from_utf8_lossy(&log.stdout);
+    assert!(body.contains("fix: hand-edited subject"), "got: {body:?}");
+    assert!(
+        !body.contains("ai suggestion"),
+        "must commit edited text, not the suggestion"
+    );
+}
+
+#[test]
+fn commit_edit_aborts_when_message_emptied() {
+    let repo = tempdir().unwrap();
+    let cfg = tempdir().unwrap();
+    let cfg_path = cfg.path().join("config.yaml");
+    std::fs::write(
+        &cfg_path,
+        r#"
+providers:
+  openai: { api_key: sk-x }
+models:
+  default: { provider: openai, model: gpt-5-mini }
+commit: { style: conventional, language: en, model: default }
+"#,
+    )
+    .unwrap();
+
+    git(repo.path(), &["init", "-q"]);
+    git(repo.path(), &["config", "user.email", "t@e.st"]);
+    git(repo.path(), &["config", "user.name", "t"]);
+    git(repo.path(), &["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.path().join("a.txt"), "hello").unwrap();
+    git(repo.path(), &["add", "a.txt"]);
+
+    // Editor blanks the file -> empty message -> must not commit.
+    Command::cargo_bin("aish")
+        .unwrap()
+        .current_dir(repo.path())
+        .env("AISH_CONFIG", &cfg_path)
+        .env("AISH_PROVIDER", "mock")
+        .env("AISH_MOCK_REPLY", "feat: ai suggestion")
+        .env("HOME", cfg.path())
+        .env("EDITOR", "printf '' >")
+        .args(["commit"])
+        .write_stdin("e\n")
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("Aborted (empty message)"));
+
+    let log = Std::new("git")
+        .current_dir(repo.path())
+        .args(["log", "--oneline"])
+        .output()
+        .unwrap();
+    assert!(
+        String::from_utf8_lossy(&log.stdout).trim().is_empty(),
+        "must not have committed on empty edited message"
+    );
+}
+
+#[test]
 fn commit_aborts_on_eof_without_apply() {
     let repo = tempdir().unwrap();
     let cfg = tempdir().unwrap();

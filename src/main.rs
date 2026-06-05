@@ -188,7 +188,7 @@ async fn run_commit(
         println!("Committed.");
         "applied"
     } else {
-        print!("Accept? [Y/n] ");
+        print!("Accept? [Y/n/e(dit)] ");
         std::io::stdout().flush()?;
         let mut input = String::new();
         let n = std::io::stdin().read_line(&mut input)?;
@@ -198,7 +198,17 @@ async fn run_commit(
             "rejected"
         } else {
             let answer = input.trim().to_lowercase();
-            if answer.is_empty() || answer == "y" || answer == "yes" {
+            if answer == "e" || answer == "edit" {
+                let edited = aish::editor::edit(&message).map_err(|e| anyhow!(e))?;
+                if edited.trim().is_empty() {
+                    println!("Aborted (empty message).");
+                    "rejected"
+                } else {
+                    git::commit(&cwd, &edited, signoff)?;
+                    println!("Committed.");
+                    "edited"
+                }
+            } else if answer.is_empty() || answer == "y" || answer == "yes" {
                 git::commit(&cwd, &message, signoff)?;
                 println!("Committed.");
                 "applied"
