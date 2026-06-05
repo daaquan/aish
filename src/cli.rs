@@ -50,6 +50,8 @@ pub enum Command {
         #[command(subcommand)]
         action: ModelsAction,
     },
+    /// Report token usage and estimated cost from the audit log.
+    Usage,
 }
 
 #[derive(Subcommand)]

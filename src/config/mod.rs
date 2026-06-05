@@ -29,6 +29,14 @@ pub struct ModelAlias {
     pub model: String,
 }
 
+/// Per-model price in USD per million tokens, keyed by the provider's model
+/// string (e.g. `claude-opus-4-8`). Used by `aish usage` to estimate cost.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct ModelPricing {
+    pub input_per_mtok: f64,
+    pub output_per_mtok: f64,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CommitConfig {
     #[serde(default = "default_style")]
@@ -55,6 +63,9 @@ pub struct Config {
     pub models: BTreeMap<String, ModelAlias>,
     #[serde(default = "default_commit")]
     pub commit: CommitConfig,
+    /// Optional model pricing for `aish usage` cost estimates. Keyed by model string.
+    #[serde(default)]
+    pub pricing: BTreeMap<String, ModelPricing>,
 }
 
 fn default_commit() -> CommitConfig {
@@ -133,6 +144,12 @@ commit:
   style: conventional
   language: en
   model: default
+
+# Optional. Prices in USD per 1,000,000 tokens, keyed by model string.
+# `aish usage` uses these to estimate cost; models without an entry show tokens only.
+# pricing:
+#   claude-opus-4-8: { input_per_mtok: 5.0, output_per_mtok: 25.0 }
+#   gpt-5-mini:      { input_per_mtok: 0.25, output_per_mtok: 2.0 }
 "#
     }
 

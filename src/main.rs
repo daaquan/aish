@@ -60,6 +60,14 @@ async fn run(cli: Cli) -> Result<()> {
             }
             Ok(())
         }
+        Command::Usage => {
+            let cfg = Config::load()?;
+            let lines =
+                aish::usage::read_log(&audit::log_path()).with_context(|| "reading audit log")?;
+            let summary = aish::usage::summarize(lines, &cfg.pricing);
+            print!("{}", aish::usage::render(&summary));
+            Ok(())
+        }
         Command::Commit {
             apply,
             model,

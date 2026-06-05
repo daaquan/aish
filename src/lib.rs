@@ -5,3 +5,4 @@ pub mod config;
 pub mod git;
 pub mod provider;
 pub mod tool;
+pub mod usage;
