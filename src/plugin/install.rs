@@ -110,6 +110,114 @@ pub fn verify_sha256(path: &Path, expected: &str) -> Result<()> {
     Ok(())
 }
 
+use std::process::Command;
+
+/// Where the registry lives. A local filesystem path (tests/dev) or a git URL.
+#[derive(Debug, Clone)]
+pub enum RegistrySource {
+    Local(PathBuf),
+    Git { url: String },
+}
+
+impl RegistrySource {
+    /// Parse a config/CLI value: an existing path or a `file://` is Local,
+    /// anything containing `://` or `git@` is Git.
+    pub fn parse(value: &str) -> RegistrySource {
+        let trimmed = value.trim();
+        if let Some(rest) = trimmed.strip_prefix("file://") {
+            return RegistrySource::Local(PathBuf::from(rest));
+        }
+        if trimmed.contains("://") || trimmed.starts_with("git@") {
+            return RegistrySource::Git { url: trimmed.to_string() };
+        }
+        RegistrySource::Local(PathBuf::from(trimmed))
+    }
+}
+
+/// Ensure a local checkout of the registry exists, returning (dir, revision).
+/// Local sources are used in place; git sources are cloned/updated under
+/// `~/.aish/registry`.
+pub fn ensure_registry(source: &RegistrySource) -> Result<(PathBuf, String)> {
+    match source {
+        RegistrySource::Local(dir) => {
+            if !dir.exists() {
+                return Err(anyhow!("registry path does not exist: {}", dir.display()));
+            }
+            Ok((dir.clone(), "local".to_string()))
+        }
+        RegistrySource::Git { url } => {
+            let dir = aish_home().join("registry");
+            if dir.join(".git").exists() {
+                run_git(&dir, &["fetch", "--quiet", "origin"])?;
+                run_git(&dir, &["reset", "--quiet", "--hard", "origin/HEAD"])?;
+            } else {
+                std::fs::create_dir_all(aish_home())?;
+                run_git(Path::new("."), &["clone", "--quiet", url, &dir.display().to_string()])?;
+            }
+            let rev = run_git(&dir, &["rev-parse", "HEAD"])?.trim().to_string();
+            Ok((dir, rev))
+        }
+    }
+}
+
+fn run_git(dir: &Path, args: &[&str]) -> Result<String> {
+    let out = Command::new("git").current_dir(dir).args(args).output()
+        .with_context(|| format!("running git {args:?}"))?;
+    if !out.status.success() {
+        return Err(anyhow!("git {args:?} failed: {}", String::from_utf8_lossy(&out.stderr)));
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Build the named plugin crate in the registry checkout and return the path to
+/// the produced release binary. Uses an isolated CARGO_HOME under ~/.aish.
+pub fn build_plugin(registry_dir: &Path, name: &str) -> Result<PathBuf> {
+    let crate_dir = registry_dir.join(name);
+    let manifest_path = crate_dir.join("Cargo.toml");
+    if !manifest_path.exists() {
+        return Err(anyhow!("plugin `{name}` not found in registry ({})", manifest_path.display()));
+    }
+    let cargo_home = aish_home().join("cargo-home");
+    std::fs::create_dir_all(&cargo_home)?;
+    let out = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
+        .env("CARGO_HOME", &cargo_home)
+        .args(["build", "--release", "--locked", "--manifest-path"])
+        .arg(&manifest_path)
+        .output()
+        .with_context(|| format!("building plugin `{name}`"))?;
+    if !out.status.success() {
+        return Err(anyhow!("cargo build failed for `{name}`: {}", String::from_utf8_lossy(&out.stderr)));
+    }
+    let bin = crate_dir.join("target").join("release").join(name);
+    if !bin.exists() {
+        return Err(anyhow!("expected built binary at {}", bin.display()));
+    }
+    Ok(bin)
+}
+
+/// Read the plugin's manifest from the registry checkout.
+pub fn read_manifest(registry_dir: &Path, name: &str) -> Result<Manifest> {
+    let path = registry_dir.join(name).join("aish-plugin.toml");
+    let raw = std::fs::read_to_string(&path)
+        .with_context(|| format!("reading manifest {}", path.display()))?;
+    Manifest::from_toml(&raw).map_err(|e| anyhow!("invalid manifest {}: {e}", path.display()))
+}
+
+/// Full install pipeline: resolve registry -> read manifest -> build -> install.
+pub fn install_from_registry(source: &RegistrySource, name: &str) -> Result<PluginEntry> {
+    let (dir, revision) = ensure_registry(source)?;
+    let manifest = read_manifest(&dir, name)?;
+    if manifest.name != name {
+        return Err(anyhow!("manifest name `{}` != requested `{name}`", manifest.name));
+    }
+    let bin = build_plugin(&dir, name)?;
+    let source_str = match source {
+        RegistrySource::Local(p) => p.display().to_string(),
+        RegistrySource::Git { url } => url.clone(),
+    };
+    install_built(&manifest, &bin, &source_str, &revision)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,6 +225,20 @@ mod tests {
 
     fn manifest() -> Manifest {
         Manifest::from_toml("name=\"demo\"\nversion=\"0.1.0\"\nabi=\"1\"\nsubcommands=[\"demo\"]\n").unwrap()
+    }
+
+    #[test]
+    fn registry_source_parsing() {
+        assert!(matches!(RegistrySource::parse("/opt/aish-plugins"), RegistrySource::Local(_)));
+        assert!(matches!(RegistrySource::parse("file:///tmp/x"), RegistrySource::Local(_)));
+        assert!(matches!(RegistrySource::parse("git@github.com:u/r.git"), RegistrySource::Git { .. }));
+        assert!(matches!(RegistrySource::parse("https://github.com/u/r"), RegistrySource::Git { .. }));
+    }
+
+    #[test]
+    fn ensure_local_registry_missing_errors() {
+        let s = RegistrySource::Local(PathBuf::from("/no/such/registry/xyz"));
+        assert!(ensure_registry(&s).is_err());
     }
 
     #[test]
