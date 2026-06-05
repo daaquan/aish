@@ -63,6 +63,8 @@ pub enum ConfigAction {
         #[arg(long)]
         force: bool,
     },
+    /// Validate the config and report problems without making any requests.
+    Check,
 }
 
 #[derive(Subcommand)]

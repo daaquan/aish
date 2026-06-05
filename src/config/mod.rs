@@ -120,7 +120,65 @@ impl Config {
     }
 }
 
+/// Severity of a config problem found by [`Config::validate`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum IssueLevel {
+    /// Breaks functionality — the config will fail when used.
+    Error,
+    /// Suspicious but not fatal — the config may still work as intended.
+    Warning,
+}
+
+/// A single problem found by [`Config::validate`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Issue {
+    pub level: IssueLevel,
+    pub message: String,
+}
+
 impl Config {
+    /// Check the config for problems without making any network requests.
+    /// Issues are returned in a stable order (errors discovered while walking
+    /// models, then commit, then providers). An empty vec means the config is
+    /// sound. This is the proactive counterpart to the lazy checks in
+    /// [`resolve::resolve_model`], surfacing every problem up front rather than
+    /// only the one alias a command happens to use.
+    pub fn validate(&self) -> Vec<Issue> {
+        let mut issues = Vec::new();
+        // Every model alias must point at a declared provider.
+        for (alias, m) in &self.models {
+            if !self.providers.contains_key(&m.provider) {
+                issues.push(Issue {
+                    level: IssueLevel::Error,
+                    message: format!(
+                        "model alias `{alias}` references unknown provider `{}`",
+                        m.provider
+                    ),
+                });
+            }
+        }
+        // The default commit model must be a defined alias.
+        if !self.models.contains_key(&self.commit.model) {
+            issues.push(Issue {
+                level: IssueLevel::Error,
+                message: format!(
+                    "commit.model `{}` is not a defined model alias",
+                    self.commit.model
+                ),
+            });
+        }
+        // A provider with neither a key nor an endpoint cannot be reached.
+        for (name, p) in &self.providers {
+            if p.api_key.is_none() && p.base_url.is_none() {
+                issues.push(Issue {
+                    level: IssueLevel::Warning,
+                    message: format!("provider `{name}` has neither api_key nor base_url set"),
+                });
+            }
+        }
+        issues
+    }
+
     /// Commented YAML template for `aish config init`.
     pub fn template() -> &'static str {
         r#"# aish configuration (~/.aish/config.yaml)
@@ -241,6 +299,52 @@ commit: { style: conventional, language: en, model: default }
         )
         .unwrap();
         assert!(cfg.providers["openai"].api_key.is_none());
+    }
+
+    #[test]
+    fn validate_accepts_sound_config() {
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }",
+        )
+        .unwrap();
+        assert!(cfg.validate().is_empty());
+    }
+
+    #[test]
+    fn validate_flags_alias_with_missing_provider() {
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: ghost, model: m }\ncommit: { style: conventional, language: en, model: default }",
+        )
+        .unwrap();
+        let issues = cfg.validate();
+        assert!(issues
+            .iter()
+            .any(|i| i.level == IssueLevel::Error && i.message.contains("ghost")));
+    }
+
+    #[test]
+    fn validate_flags_commit_model_not_an_alias() {
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: nope }",
+        )
+        .unwrap();
+        let issues = cfg.validate();
+        assert!(issues
+            .iter()
+            .any(|i| i.level == IssueLevel::Error && i.message.contains("nope")));
+    }
+
+    #[test]
+    fn validate_warns_on_unconfigured_provider() {
+        std::env::remove_var("AISH_UNSET_VALIDATE_1");
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: ${AISH_UNSET_VALIDATE_1} }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }",
+        )
+        .unwrap();
+        let issues = cfg.validate();
+        assert!(issues
+            .iter()
+            .any(|i| i.level == IssueLevel::Warning && i.message.contains("openai")));
     }
 
     #[test]

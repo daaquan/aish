@@ -26,15 +26,16 @@ async fn main() {
 
 async fn run(cli: Cli) -> Result<()> {
     match cli.command {
-        Command::Config {
-            action: ConfigAction::Init { force },
-        } => {
-            let path = Config::default_path();
-            Config::write_template(&path, force)
-                .with_context(|| format!("writing config to {}", path.display()))?;
-            println!("Wrote config template to {}", path.display());
-            Ok(())
-        }
+        Command::Config { action } => match action {
+            ConfigAction::Init { force } => {
+                let path = Config::default_path();
+                Config::write_template(&path, force)
+                    .with_context(|| format!("writing config to {}", path.display()))?;
+                println!("Wrote config template to {}", path.display());
+                Ok(())
+            }
+            ConfigAction::Check => run_config_check(),
+        },
         Command::Providers {
             action: ProvidersAction::List,
         } => {
@@ -77,6 +78,35 @@ async fn run(cli: Cli) -> Result<()> {
             no_cache,
         } => run_commit(apply, model, style, lang, signoff, no_cache).await,
     }
+}
+
+fn run_config_check() -> Result<()> {
+    use aish::config::IssueLevel;
+    let cfg = Config::load()?;
+    let issues = cfg.validate();
+    if issues.is_empty() {
+        println!(
+            "Config OK: {} provider(s), {} model alias(es).",
+            cfg.providers.len(),
+            cfg.models.len()
+        );
+        return Ok(());
+    }
+    let mut errors = 0usize;
+    for issue in &issues {
+        let tag = match issue.level {
+            IssueLevel::Error => {
+                errors += 1;
+                "error"
+            }
+            IssueLevel::Warning => "warning",
+        };
+        println!("{tag}: {}", issue.message);
+    }
+    if errors > 0 {
+        return Err(anyhow!("config has {errors} error(s)"));
+    }
+    Ok(())
 }
 
 async fn run_commit(
