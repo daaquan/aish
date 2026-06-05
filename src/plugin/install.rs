@@ -243,8 +243,15 @@ pub fn build_plugin(registry_dir: &Path, name: &str) -> Result<PathBuf> {
     }
     let cargo_home = aish_home().join("cargo-home");
     std::fs::create_dir_all(&cargo_home)?;
+    // Pin the output location explicitly. The registry may be a cargo workspace,
+    // in which case the artifact would otherwise land in the workspace-root
+    // target dir (not `crate_dir/target`); forcing CARGO_TARGET_DIR makes the
+    // built binary path deterministic regardless of the crate's layout.
+    let target_dir = aish_home().join("build");
+    std::fs::create_dir_all(&target_dir)?;
     let out = Command::new(std::env::var("CARGO").unwrap_or_else(|_| "cargo".into()))
         .env("CARGO_HOME", &cargo_home)
+        .env("CARGO_TARGET_DIR", &target_dir)
         .args(["build", "--release", "--locked", "--manifest-path"])
         .arg(&manifest_path)
         .output()
@@ -255,7 +262,7 @@ pub fn build_plugin(registry_dir: &Path, name: &str) -> Result<PathBuf> {
             String::from_utf8_lossy(&out.stderr)
         ));
     }
-    let bin = crate_dir.join("target").join("release").join(name);
+    let bin = target_dir.join("release").join(name);
     if !bin.exists() {
         return Err(anyhow!("expected built binary at {}", bin.display()));
     }
