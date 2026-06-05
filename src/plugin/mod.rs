@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pub mod manifest;
 pub mod protocol;
+pub mod services;
 
 use std::path::PathBuf;
 

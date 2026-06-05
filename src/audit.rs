@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct AuditEntry {
     pub tool: String,
     pub provider: String,
