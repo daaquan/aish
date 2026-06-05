@@ -34,6 +34,9 @@ pub enum Command {
         /// Add a DCO Signed-off-by trailer to the commit.
         #[arg(long)]
         signoff: bool,
+        /// Bypass the response cache (force a fresh model request).
+        #[arg(long)]
+        no_cache: bool,
     },
     /// Write a commented config template to ~/.aish/config.yaml.
     Config {

@@ -74,7 +74,8 @@ async fn run(cli: Cli) -> Result<()> {
             style,
             lang,
             signoff,
-        } => run_commit(apply, model, style, lang, signoff).await,
+            no_cache,
+        } => run_commit(apply, model, style, lang, signoff, no_cache).await,
     }
 }
 
@@ -84,6 +85,7 @@ async fn run_commit(
     style: Option<String>,
     lang: Option<String>,
     signoff: bool,
+    no_cache: bool,
 ) -> Result<()> {
     let cfg = Config::load()?;
     let cwd = std::env::current_dir()?;
@@ -96,36 +98,58 @@ async fn run_commit(
 
     let alias = model.unwrap_or_else(|| cfg.commit.model.clone());
     let resolved = resolve_model(&cfg, &alias)?;
-    // Test hook: AISH_PROVIDER=mock returns a canned message without network.
-    let provider: Box<dyn aish::provider::Provider> =
-        if std::env::var("AISH_PROVIDER").as_deref() == Ok("mock") {
-            Box::new(aish::provider::mock::MockProvider::new(
-                std::env::var("AISH_MOCK_REPLY").unwrap_or_else(|_| "feat: add thing".into()),
-            ))
-        } else {
-            build_provider(&resolved.provider_name, &resolved).map_err(|e| anyhow!(e))?
-        };
 
     let style = style.unwrap_or_else(|| cfg.commit.style.clone());
     let lang = lang.unwrap_or_else(|| cfg.commit.language.clone());
     let messages = build_messages(&style, &lang, &diff);
 
-    let resp = provider
-        .chat(ChatRequest {
-            model: resolved.model.clone(),
-            messages,
-            temperature: Some(0.2),
-        })
-        .await
-        .map_err(|e| anyhow!(e))?;
+    let cache_dir = aish::cache::cache_dir();
+    let cache_key = aish::cache::request_key(&resolved.provider_name, &resolved.model, &messages);
 
-    let message = postprocess(&resp.content);
-    if message.is_empty() {
-        return Err(anyhow!(
-            "model returned an empty/unusable message; not committing. raw: {:?}",
-            resp.content
-        ));
-    }
+    // Deterministic cache: an identical request (same diff, model, style, language)
+    // reuses the stored message and skips the model request entirely.
+    let (message, usage) = match (!no_cache)
+        .then(|| aish::cache::get(&cache_dir, &cache_key))
+        .flatten()
+    {
+        Some(cached) => {
+            println!("(cached — no model request made)");
+            (cached, aish::provider::Usage::default())
+        }
+        None => {
+            // Test hook: AISH_PROVIDER=mock returns a canned message without network.
+            let provider: Box<dyn aish::provider::Provider> =
+                if std::env::var("AISH_PROVIDER").as_deref() == Ok("mock") {
+                    Box::new(aish::provider::mock::MockProvider::new(
+                        std::env::var("AISH_MOCK_REPLY")
+                            .unwrap_or_else(|_| "feat: add thing".into()),
+                    ))
+                } else {
+                    build_provider(&resolved.provider_name, &resolved).map_err(|e| anyhow!(e))?
+                };
+
+            let resp = provider
+                .chat(ChatRequest {
+                    model: resolved.model.clone(),
+                    messages,
+                    temperature: Some(0.2),
+                })
+                .await
+                .map_err(|e| anyhow!(e))?;
+
+            let message = postprocess(&resp.content);
+            if message.is_empty() {
+                return Err(anyhow!(
+                    "model returned an empty/unusable message; not committing. raw: {:?}",
+                    resp.content
+                ));
+            }
+            if !no_cache {
+                let _ = aish::cache::put(&cache_dir, &cache_key, &message);
+            }
+            (message, resp.usage.unwrap_or_default())
+        }
+    };
 
     println!("\nSuggested commit:\n\n{message}\n");
 
@@ -155,7 +179,6 @@ async fn run_commit(
         }
     };
 
-    let usage = resp.usage.unwrap_or_default();
     let _ = audit::record(&audit::AuditEntry {
         tool: "git.commit.message.generate".into(),
         provider: resolved.provider_name.clone(),
