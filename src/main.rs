@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: MIT
 use aish::audit;
 use aish::cli::{Cli, Command, ConfigAction, ModelsAction, ProvidersAction};
 use aish::config::resolve::resolve_model;

@@ -12,15 +12,15 @@ Early scaffold. No application code, build system, or tests exist yet. This file
 
 ## License
 
-- **AGPL-3.0-only** (`LICENSE`). Copyleft: contributions are licensed under AGPL-3.0-only (same as the project). Any code added must be license-compatible with AGPL-3.0. Keep the `SPDX-License-Identifier: AGPL-3.0-only` marker in `README.md`; add per-file SPDX headers to source files once they exist.
+- **MIT** (`LICENSE`). Permissive: contributions are licensed under MIT (same as the project, inbound = outbound). Keep the `SPDX-License-Identifier: MIT` marker in `README.md`; every source file starts with `// SPDX-License-Identifier: MIT`.
 
 ## GitHub Workflow
 
 - **Direct commits to `main` allowed.** Solo-maintainer workflow: commit straight to `main`. No branch-per-feature or PR is required, though you may still open a PR for larger or riskier work.
 - **Conventional Commits** for messages: `<type>: <description>` where type is one of `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`, `ci`.
-- **DCO sign-off required.** Every commit needs a `Signed-off-by` line — always commit with `git commit -s`.
+- **No DCO sign-off required.** Plain `git commit` is fine; `Signed-off-by` is optional.
 - **Keep changes scoped.** One logical unit of functionality per commit; do not bundle unrelated changes.
-- **When you do open a PR**, squash merge after green CI. `main` is protected (no force-push). PR description should summarize all commits and include a test plan (`git diff main...HEAD`).
+- **When you do open a PR**, merge after green CI (squash, merge, or rebase — your choice). No required review. PR description should summarize all commits and include a test plan (`git diff main...HEAD`).
 - See `CONTRIBUTING.md` for the full contributor guide and `CODE_OF_CONDUCT.md`.
 
 ## Build & Test
