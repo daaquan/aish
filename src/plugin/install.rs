@@ -34,6 +34,19 @@ fn validate_plugin_name(name: &str) -> Result<()> {
     Ok(())
 }
 
+fn format_cargo_build_error(name: &str, stderr: &[u8]) -> String {
+    let stderr = String::from_utf8_lossy(stderr);
+    let mut msg = format!("cargo build failed for `{name}`: {stderr}");
+    if stderr.contains("can't find crate for `std`")
+        || stderr.contains("can't find crate for `core`")
+    {
+        msg.push_str(
+            "\n\nRust target standard libraries are missing. Install the host target, then retry:\n  rustup target add x86_64-unknown-linux-gnu",
+        );
+    }
+    msg
+}
+
 pub fn sha256_file(path: &Path) -> Result<String> {
     let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
     let mut h = Sha256::new();
@@ -257,10 +270,7 @@ pub fn build_plugin(registry_dir: &Path, name: &str) -> Result<PathBuf> {
         .output()
         .with_context(|| format!("building plugin `{name}`"))?;
     if !out.status.success() {
-        return Err(anyhow!(
-            "cargo build failed for `{name}`: {}",
-            String::from_utf8_lossy(&out.stderr)
-        ));
+        return Err(anyhow!(format_cargo_build_error(name, &out.stderr)));
     }
     let bin = target_dir.join("release").join(name);
     if !bin.exists() {
@@ -361,6 +371,15 @@ mod tests {
     fn ensure_local_registry_missing_errors() {
         let s = RegistrySource::Local(PathBuf::from("/no/such/registry/xyz"));
         assert!(ensure_registry(&s).is_err());
+    }
+
+    #[test]
+    fn cargo_build_error_explains_missing_rust_target() {
+        let err = format_cargo_build_error(
+            "commit",
+            b"error[E0463]: can't find crate for `std`\n= note: the `x86_64-unknown-linux-gnu` target may not be installed\n",
+        );
+        assert!(err.contains("rustup target add x86_64-unknown-linux-gnu"));
     }
 
     #[test]

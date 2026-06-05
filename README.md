@@ -30,6 +30,13 @@ registry is `git@github.com:daaquan/aish-plugins.git` (override with
 `AISH_REGISTRY`). See the [plugin system design](docs/superpowers/specs/2026-06-05-plugin-system-design.md)
 for the stdio ABI.
 
+Plugin install requires a working Rust toolchain for the host target. On Ubuntu,
+if cargo reports `can't find crate for std` or `core`, run:
+
+```bash
+rustup target add x86_64-unknown-linux-gnu
+```
+
 Even for trusted plugins the host guards the boundary: each plugin runs under
 per-phase timeouts and is SIGKILLed if it overstays, its stderr is drained into a
 bounded buffer, oversized protocol frames are rejected as they are read, and
