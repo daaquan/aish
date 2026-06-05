@@ -16,6 +16,24 @@ fn lock_path() -> PathBuf {
     aish_home().join("plugins.lock")
 }
 
+/// Reject plugin names that are unsafe as a filesystem path component. Plugins
+/// are trusted, but a stray `../` or separator in a registry manifest name must
+/// never let an install escape `~/.aish/plugins`.
+fn validate_plugin_name(name: &str) -> Result<()> {
+    let ok = !name.is_empty()
+        && name != "."
+        && name != ".."
+        && name
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-'));
+    if !ok {
+        return Err(anyhow!(
+            "invalid plugin name `{name}`: must be non-empty, match [A-Za-z0-9._-]+, and not be `.` or `..`"
+        ));
+    }
+    Ok(())
+}
+
 pub fn sha256_file(path: &Path) -> Result<String> {
     let bytes = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
     let mut h = Sha256::new();
@@ -41,6 +59,7 @@ pub fn install_built(
         .open(lock_path())?;
     lock.lock_exclusive()?;
     let result = (|| {
+        validate_plugin_name(&manifest.name)?;
         let mut reg = InstalledRegistry::load(&plugins_toml())?;
         reg.check_conflicts(&manifest.name, &manifest.subcommands)?;
 
@@ -60,12 +79,31 @@ pub fn install_built(
 
         let sha = sha256_file(&staged_bin)?;
 
-        // Atomic-ish replace of the install dir.
-        if final_dir.exists() {
-            std::fs::remove_dir_all(&final_dir)?;
+        // Crash-safe replace: move any previous install aside as a backup, swap
+        // the staging dir into place, then drop the backup. If the swap fails,
+        // restore the backup so a failed install never destroys a working one.
+        let backup = plugins_dir().join(format!(".{}.backup", manifest.name));
+        if backup.exists() {
+            std::fs::remove_dir_all(&backup)?;
         }
-        std::fs::rename(&staging, &final_dir)
-            .with_context(|| format!("renaming staging into {}", final_dir.display()))?;
+        let had_previous = final_dir.exists();
+        if had_previous {
+            std::fs::rename(&final_dir, &backup)?;
+        }
+        match std::fs::rename(&staging, &final_dir) {
+            Ok(()) => {
+                if had_previous {
+                    let _ = std::fs::remove_dir_all(&backup);
+                }
+            }
+            Err(e) => {
+                if had_previous {
+                    let _ = std::fs::rename(&backup, &final_dir);
+                }
+                return Err(anyhow::Error::from(e))
+                    .with_context(|| format!("renaming staging into {}", final_dir.display()));
+            }
+        }
 
         let entry = PluginEntry {
             version: manifest.version.clone(),
@@ -225,6 +263,19 @@ mod tests {
 
     fn manifest() -> Manifest {
         Manifest::from_toml("name=\"demo\"\nversion=\"0.1.0\"\nabi=\"1\"\nsubcommands=[\"demo\"]\n").unwrap()
+    }
+
+    #[test]
+    fn rejects_path_traversal_name() {
+        let home = tempdir().unwrap();
+        std::env::set_var("AISH_HOME", home.path());
+        let m = Manifest::from_toml("name=\"../evil\"\nversion=\"0.1.0\"\nabi=\"1\"\n").unwrap();
+        let src = tempdir().unwrap();
+        let bin = src.path().join("b");
+        std::fs::write(&bin, b"x").unwrap();
+        let err = install_built(&m, &bin, "local", "r").unwrap_err();
+        assert!(err.to_string().contains("invalid plugin name"));
+        std::env::remove_var("AISH_HOME");
     }
 
     #[test]
