@@ -5,6 +5,7 @@ pub mod cli;
 pub mod config;
 pub mod editor;
 pub mod git;
+pub mod plugin;
 pub mod provider;
 pub mod tool;
 pub mod usage;
