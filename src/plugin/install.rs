@@ -347,6 +347,7 @@ pub async fn update_from_registry(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
     use tempfile::tempdir;
 
     fn manifest() -> Manifest {
@@ -355,6 +356,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn rejects_path_traversal_name() {
         let home = tempdir().unwrap();
         std::env::set_var("AISH_HOME", home.path());
@@ -403,6 +405,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn install_built_records_and_hashes() {
         let home = tempdir().unwrap();
         std::env::set_var("AISH_HOME", home.path());
@@ -422,6 +425,7 @@ mod tests {
     }
 
     #[tokio::test]
+    #[serial]
     async fn update_unknown_plugin_errors() {
         let home = tempdir().unwrap();
         std::env::set_var("AISH_HOME", home.path());
@@ -434,6 +438,7 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn tamper_check_fails_on_modified_binary() {
         let home = tempdir().unwrap();
         std::env::set_var("AISH_HOME", home.path());
