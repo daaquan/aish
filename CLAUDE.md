@@ -4,7 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-Early scaffold. No application code, build system, or tests exist yet. This file documents the conventions to follow as the codebase grows. Update the **Build & Test** and **Architecture** sections with real commands and structure once they exist — do not invent them before then.
+Working CLI (v0.4.x). `aish commit` generates commit messages from staged
+diffs via configurable model providers. Architecture decisions live in
+`docs/adr/`; older design specs in `docs/superpowers/` are historical.
 
 ## Language
 
@@ -26,12 +28,30 @@ Early scaffold. No application code, build system, or tests exist yet. This file
 ## Build & Test
 
 ```
-# build:  cargo build
-# test:   cargo test --all
-# lint:   cargo clippy --all-targets -- -D warnings && cargo fmt --all -- --check
-# single test: cargo test <name> -- --test-threads=1
+build:  cargo build
+test:   cargo test --all
+lint:   cargo clippy --all-targets -- -D warnings && cargo fmt --all -- --check
+single test: cargo test <name> -- --test-threads=1
 ```
 
 ## Architecture
 
-_To be filled once code exists. Document the big-picture structure that spans multiple files — not an exhaustive file listing._
+Single Rust binary. Tools are **built-in subcommands** — there is no plugin
+system, by decision: see `docs/adr/0001-no-plugin-architecture.md` before
+proposing one.
+
+- `src/main.rs` — CLI dispatch; `run_commit` drives the commit flow
+  (staged diff → provider → confirm/edit loop → `git commit`).
+- `src/cli.rs` — clap definitions. Global `--json` and `--verbose` flags.
+- `src/tool/` — built-in tool logic; `tool/commit.rs` builds the prompt and
+  post-processes the model reply. New tools go here.
+- `src/provider/` — `Provider` trait (`chat`) with Anthropic, OpenAI-compatible
+  (incl. Ollama/Kilo), Gemini, mock, and a retry decorator. Selected via model
+  aliases in config.
+- `src/config/` — `~/.aish/config.yaml` (override `$AISH_CONFIG`): providers,
+  model aliases, commit settings, pricing; `validate()` powers
+  `aish config check`; `resolve.rs` maps alias → provider + model.
+- `src/cache.rs` / `src/audit.rs` / `src/usage.rs` — deterministic response
+  cache, JSONL audit log, and `aish usage` cost summaries over that log.
+- `tests/commit_e2e.rs` — end-to-end commit flows via `assert_cmd` with
+  `AISH_PROVIDER=mock` (no network).

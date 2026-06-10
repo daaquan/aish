@@ -1,20 +1,17 @@
 [package]
 name = "aish"
-version = "0.3.1"
+version = "0.4.0"
 edition = "2021"
 license = "MIT"
 description = "AI-powered extensible shell for developers"
 
 [dependencies]
-tokio = { version = "1", features = ["macros", "rt-multi-thread", "process", "io-util", "time"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread", "time"] }
 async-trait = "0.1"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_yaml = "0.9"
 serde_json = "1"
-toml = "0.8"
-sha2 = "0.10"
-fs2 = "0.4"
 clap = { version = "4", features = ["derive"] }
 thiserror = "1"
 anyhow = "1"

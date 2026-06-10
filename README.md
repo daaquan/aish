@@ -2,45 +2,34 @@
 
 <!-- SPDX-License-Identifier: MIT -->
 
-> See [`docs/superpowers/specs/`](docs/superpowers/specs/) for design specs.
+> See [`docs/superpowers/specs/`](docs/superpowers/specs/) for design specs and
+> [`docs/adr/`](docs/adr/) for architecture decisions.
 
-## Plugins
+## Commit messages
 
-aish ships no tools by default. Install them from the plugin registry:
-
-```bash
-aish plugin install commit     # build + install the commit plugin
-aish plugin update commit      # rebuild + reinstall (omit name for all)
-aish plugin list               # show installed plugins + state
-aish plugin disable commit     # turn it off without uninstalling
-aish plugin enable commit
-aish plugin uninstall commit
-```
-
-Once installed:
+`aish commit` generates a commit message from your staged diff and asks
+before committing:
 
 ```bash
 git add .
-aish commit            # suggest a message, then [Y/n]
+aish commit            # suggest a message, then [Y/n/e(dit)]
 aish commit --apply    # generate and commit without prompting
+aish commit --signoff  # add a DCO Signed-off-by trailer
 ```
 
-Plugins are trusted native executables built from source on install. The default
-registry is `git@github.com:daaquan/aish-plugins.git` (override with
-`AISH_REGISTRY`). See the [plugin system design](docs/superpowers/specs/2026-06-05-plugin-system-design.md)
-for the stdio ABI.
+Answering `e` opens `$EDITOR` on the suggestion and re-asks with the edited
+message. Identical requests (same diff, model, style, language) are served
+from a local cache without a model call (`--no-cache` to bypass).
 
-Plugin install requires a working Rust toolchain for the host target. On Ubuntu,
-if cargo reports `can't find crate for std` or `core`, run:
+Configure style, language, and model alias in `~/.aish/config.yaml`
+(`aish config init` writes a commented template):
 
-```bash
-rustup target add x86_64-unknown-linux-gnu
+```yaml
+commit:
+  style: conventional
+  language: en
+  model: default
 ```
-
-Even for trusted plugins the host guards the boundary: each plugin runs under
-per-phase timeouts and is SIGKILLed if it overstays, its stderr is drained into a
-bounded buffer, oversized protocol frames are rejected as they are read, and
-non-UTF-8 arguments are refused rather than forwarded.
 
 ### JSON output (CI/CD)
 
@@ -53,9 +42,9 @@ aish config check --json        # {"ok":true|false,"issues":[...]} ; nonzero exi
 aish usage --json               # {"by_model":{...},"total":{...}}
 ```
 
-> **Testing:** setting `AISH_PROVIDER=mock` makes the host's `model.chat` service
-> return a canned message (`$AISH_MOCK_REPLY`) without calling any provider —
-> used by the test suite and useful for offline/CI smoke checks.
+> **Testing:** setting `AISH_PROVIDER=mock` returns a canned message
+> (`$AISH_MOCK_REPLY`) without calling any provider — used by the test suite
+> and useful for offline/CI smoke checks.
 
 ## Contributing
 

@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] — 2026-06-11
+
+### Changed
+
+- **Breaking:** removed the subprocess plugin system introduced in 0.2.0.
+  `commit` is a built-in subcommand again — no `aish plugin install` step.
+  Rationale recorded in
+  [ADR-0001](docs/adr/0001-no-plugin-architecture.md): the complexity of the
+  stdio ABI, installer, and two-repo sync was not justified by a single
+  plugin, and the install step hurt UX. The `aish plugin` command group is
+  gone; `[plugins.<name>]` config tables are ignored (top-level `commit:` is
+  canonical again); the `daaquan/aish-plugins` repo is archived.
+- The interactive commit prompt now re-asks after an edit
+  (`[Y/n/e(dit)]` → edit → shows the edited message → confirm), instead of
+  committing the edited text immediately.
+
+### Removed
+
+- `aish plugin install/update/list/enable/disable/uninstall`.
+- The stdio plugin host, JSONL protocol, manifest registry, prebuilt-binary
+  fetcher, and the `toml`, `sha2`, `fs2` dependencies.
+
 ## [0.3.1] — 2026-06-07
 
 ### Fixed
@@ -84,7 +106,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` install script and project governance foundation
   (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, design specs).
 
-[Unreleased]: https://github.com/daaquan/aish/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/daaquan/aish/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/daaquan/aish/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/daaquan/aish/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/daaquan/aish/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/daaquan/aish/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/daaquan/aish/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/daaquan/aish/releases/tag/v0.1.0

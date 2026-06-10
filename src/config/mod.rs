@@ -61,14 +61,9 @@ fn default_model() -> String {
 pub struct Config {
     pub providers: BTreeMap<String, ProviderConfig>,
     pub models: BTreeMap<String, ModelAlias>,
-    /// Deprecated: per-plugin config now lives under `[plugins.commit]`. Kept as
-    /// a back-compat alias that still feeds the commit plugin (see `scoped_config`).
+    /// Settings for the built-in `aish commit` command.
     #[serde(default = "default_commit")]
     pub commit: CommitConfig,
-    /// Free-form per-plugin config tables, keyed by plugin name. Forwarded to the
-    /// matching plugin (and only that plugin) in the `invoke` frame.
-    #[serde(default)]
-    pub plugins: BTreeMap<String, serde_yaml::Value>,
     /// Optional model pricing for `aish usage` cost estimates. Keyed by model string.
     #[serde(default)]
     pub pricing: BTreeMap<String, ModelPricing>,
@@ -182,16 +177,6 @@ impl Config {
                 });
             }
         }
-        // A per-plugin config that isn't a table can't be forwarded as one; it
-        // is silently ignored at runtime, so flag the likely mistake here.
-        for (name, value) in &self.plugins {
-            if !value.is_mapping() {
-                issues.push(Issue {
-                    level: IssueLevel::Warning,
-                    message: format!("plugin config `plugins.{name}` is not a table; ignored"),
-                });
-            }
-        }
         // A pricing entry that matches no alias's model string is dead config:
         // `aish usage` can never apply it. Likely a typo or stale model name.
         if !self.pricing.is_empty() {
@@ -230,20 +215,10 @@ models:
   local:   { provider: ollama,    model: qwen3-coder }
   # fast:   { provider: openai,   model: gpt-5-mini }
 
-# Per-plugin config. Each `[plugins.<name>]` table is forwarded only to the
-# plugin of that name — no plugin sees another's settings or any provider key.
-plugins:
-  commit:
-    style: conventional
-    language: en
-    model: default
-
-# Deprecated: the top-level `commit:` block below still works (it back-fills the
-# commit plugin) but `[plugins.commit]` above is the canonical location now.
-# commit:
-#   style: conventional
-#   language: en
-#   model: default
+commit:
+  style: conventional
+  language: en
+  model: default
 
 # Optional. Prices in USD per 1,000,000 tokens, keyed by model string.
 # `aish usage` uses these to estimate cost; models without an entry show tokens only.
@@ -395,18 +370,6 @@ commit: { style: conventional, language: en, model: default }
         )
         .unwrap();
         assert!(cfg.validate().is_empty());
-    }
-
-    #[test]
-    fn validate_warns_on_non_table_plugin_config() {
-        let cfg = Config::from_yaml(
-            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }\nplugins:\n  commit: \"oops\"\n",
-        )
-        .unwrap();
-        let issues = cfg.validate();
-        assert!(issues.iter().any(|i| i.level == IssueLevel::Warning
-            && i.message.contains("commit")
-            && i.message.contains("table")));
     }
 
     #[test]

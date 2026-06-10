@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: MIT
 use clap::{Parser, Subcommand};
-use std::ffi::OsString;
 
 #[derive(Parser)]
 #[command(
@@ -21,6 +20,27 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Command {
+    /// Generate a commit message from staged changes and optionally commit.
+    Commit {
+        /// Commit immediately without confirmation.
+        #[arg(long)]
+        apply: bool,
+        /// Override the model alias from config.
+        #[arg(long)]
+        model: Option<String>,
+        /// Override commit style (e.g. conventional).
+        #[arg(long)]
+        style: Option<String>,
+        /// Override output language.
+        #[arg(long)]
+        lang: Option<String>,
+        /// Add a DCO Signed-off-by trailer to the commit.
+        #[arg(long)]
+        signoff: bool,
+        /// Bypass the response cache (force a fresh model request).
+        #[arg(long)]
+        no_cache: bool,
+    },
     /// Write a commented config template to ~/.aish/config.yaml.
     Config {
         #[command(subcommand)]
@@ -38,15 +58,6 @@ pub enum Command {
     },
     /// Report token usage and estimated cost from the audit log.
     Usage,
-    /// Manage tool plugins (install / update / list / enable / disable / uninstall).
-    Plugin {
-        #[command(subcommand)]
-        action: PluginAction,
-    },
-    /// Any other subcommand is dispatched to an installed plugin. Captured as
-    /// `OsString` so non-UTF-8 argv reaches us intact for a clean rejection.
-    #[command(external_subcommand)]
-    External(Vec<OsString>),
 }
 
 #[derive(Subcommand)]
@@ -67,29 +78,4 @@ pub enum ProvidersAction {
 #[derive(Subcommand)]
 pub enum ModelsAction {
     List,
-}
-
-#[derive(Subcommand)]
-pub enum PluginAction {
-    /// Build and install a plugin from the registry.
-    Install {
-        /// Plugin name (directory in the registry).
-        name: String,
-        /// Skip the trusted-code confirmation prompt.
-        #[arg(long)]
-        yes: bool,
-    },
-    /// Rebuild and reinstall a plugin from the registry (or all if no name).
-    Update {
-        /// Plugin to update; omit to update every installed plugin.
-        name: Option<String>,
-    },
-    /// List installed plugins.
-    List,
-    /// Enable an installed plugin.
-    Enable { name: String },
-    /// Disable an installed plugin (keeps it installed).
-    Disable { name: String },
-    /// Remove an installed plugin.
-    Uninstall { name: String },
 }
