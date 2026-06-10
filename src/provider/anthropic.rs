@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+use crate::provider::http::{normalize_base, send_json};
 use crate::provider::{ChatRequest, ChatResponse, Provider, ProviderError, Role, Usage};
 use async_trait::async_trait;
 use serde::Deserialize;
@@ -20,7 +21,7 @@ impl Anthropic {
 
     pub fn with_base(base_url: String, api_key: String) -> Self {
         Self {
-            base_url: base_url.trim_end_matches('/').to_string(),
+            base_url: normalize_base(base_url),
             api_key,
             client: reqwest::Client::new(),
         }
@@ -82,28 +83,13 @@ impl Provider for Anthropic {
         }
 
         let url = format!("{}/v1/messages", self.base_url);
-        let resp = self
+        let rb = self
             .client
             .post(url)
             .header("x-api-key", &self.api_key)
             .header("anthropic-version", API_VERSION)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| ProviderError::Request(e.to_string()))?;
-
-        match resp.status().as_u16() {
-            200 => {}
-            401 => return Err(ProviderError::Auth),
-            429 => return Err(ProviderError::RateLimited),
-            400 | 404 => return Err(ProviderError::BadModel(req.model.clone())),
-            s => return Err(ProviderError::Request(format!("HTTP {s}"))),
-        }
-
-        let parsed: RespBody = resp
-            .json()
-            .await
-            .map_err(|e| ProviderError::Decode(e.to_string()))?;
+            .json(&body);
+        let parsed: RespBody = send_json(rb, &req.model).await?;
 
         let content = parsed
             .content

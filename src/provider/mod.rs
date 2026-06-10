@@ -6,6 +6,7 @@ use crate::config::resolve::Resolved;
 
 pub mod anthropic;
 pub mod gemini;
+mod http;
 pub mod mock;
 pub mod openai;
 pub mod retry;
