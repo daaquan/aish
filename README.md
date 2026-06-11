@@ -31,6 +31,22 @@ commit:
   model: default
 ```
 
+## Pull requests
+
+`aish pr` generates a PR title and description from the commits and diff of
+your branch against the default branch, and asks before creating the PR via
+[`gh`](https://cli.github.com):
+
+```bash
+aish pr                # suggest title/body, then [Y/n/e(dit)]
+aish pr --apply        # generate and run `gh pr create` without prompting
+aish pr --base develop # diff against a specific base branch
+```
+
+Like `aish commit`, answering `e` opens `$EDITOR` (first line = title, rest =
+body), responses are cached (`--no-cache` to bypass), and `--model` / `--lang`
+override the config.
+
 ### JSON output (CI/CD)
 
 The global `--json` flag makes built-in commands emit machine-readable JSON on

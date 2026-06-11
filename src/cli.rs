@@ -41,6 +41,24 @@ pub enum Command {
         #[arg(long)]
         no_cache: bool,
     },
+    /// Generate a PR title/body from the branch diff and optionally create the PR.
+    Pr {
+        /// Create the PR immediately via `gh pr create` without confirmation.
+        #[arg(long)]
+        apply: bool,
+        /// Override the model alias from config.
+        #[arg(long)]
+        model: Option<String>,
+        /// Override output language.
+        #[arg(long)]
+        lang: Option<String>,
+        /// Base branch to diff against (default: auto-detect).
+        #[arg(long)]
+        base: Option<String>,
+        /// Bypass the response cache (force a fresh model request).
+        #[arg(long)]
+        no_cache: bool,
+    },
     /// Write a commented config template to ~/.aish/config.yaml.
     Config {
         #[command(subcommand)]

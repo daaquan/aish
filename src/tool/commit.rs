@@ -24,6 +24,17 @@ fn floor_char_boundary(s: &str, max: usize) -> usize {
     i
 }
 
+/// Cap a diff at `MAX_DIFF_CHARS`, cutting on a UTF-8 char boundary and
+/// appending a truncation marker.
+pub(crate) fn truncate_diff(diff: &str) -> String {
+    if diff.len() > MAX_DIFF_CHARS {
+        let cut = floor_char_boundary(diff, MAX_DIFF_CHARS);
+        format!("{}\n[diff truncated]", &diff[..cut])
+    } else {
+        diff.to_string()
+    }
+}
+
 /// Build the system+user messages for commit-message generation.
 pub fn build_messages(style: &str, language: &str, diff: &str) -> Vec<Message> {
     let system = format!(
@@ -34,12 +45,7 @@ pub fn build_messages(style: &str, language: &str, diff: &str) -> Vec<Message> {
          Output ONLY the commit message. Subject <= 50 chars, imperative mood. \
          No backticks, no explanation, no surrounding quotes."
     );
-    let diff = if diff.len() > MAX_DIFF_CHARS {
-        let cut = floor_char_boundary(diff, MAX_DIFF_CHARS);
-        format!("{}\n[diff truncated]", &diff[..cut])
-    } else {
-        diff.to_string()
-    };
+    let diff = truncate_diff(diff);
     let user = format!("Generate a commit message for this staged diff:\n\n{diff}");
     vec![Message::system(system), Message::user(user)]
 }

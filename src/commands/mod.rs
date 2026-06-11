@@ -5,6 +5,7 @@
 
 pub mod commit;
 pub mod config;
+pub mod pr;
 pub mod uninstall;
 pub mod update;
 
@@ -35,6 +36,13 @@ pub async fn run(cli: Cli) -> Result<()> {
             signoff,
             no_cache,
         } => commit::run(apply, model, style, lang, signoff, no_cache, json).await,
+        Command::Pr {
+            apply,
+            model,
+            lang,
+            base,
+            no_cache,
+        } => pr::run(apply, model, lang, base, no_cache, json).await,
         Command::Update { check, version } => update::run(check, version, json).await,
         Command::Uninstall { purge, yes } => uninstall::run(purge, yes, json),
     }
