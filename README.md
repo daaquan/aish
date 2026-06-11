@@ -73,6 +73,18 @@ aish changelog --from v0.4.0    # explicit range start
 aish changelog --from v0.4.0 --to v0.5.0
 ```
 
+## One-shot questions
+
+`aish ask` answers a single question; piped stdin becomes context:
+
+```bash
+aish ask "what does EXDEV mean?"
+cargo build 2>&1 | aish ask "explain this error"
+```
+
+Piped input is capped at 12k chars. Identical question+context pairs are
+served from the cache (`--no-cache` to bypass).
+
 ### JSON output (CI/CD)
 
 The global `--json` flag makes built-in commands emit machine-readable JSON on
@@ -88,6 +100,14 @@ aish usage --json               # {"by_model":{...},"total":{...}}
 > **Testing:** setting `AISH_PROVIDER=mock` returns a canned message
 > (`$AISH_MOCK_REPLY`) without calling any provider — used by the test suite
 > and useful for offline/CI smoke checks.
+
+## Shell completions
+
+```bash
+aish completions zsh  > "${fpath[1]}/_aish"                       # zsh
+aish completions bash > /etc/bash_completion.d/aish               # bash
+aish completions fish > ~/.config/fish/completions/aish.fish     # fish
+```
 
 ## Updating & uninstalling
 
