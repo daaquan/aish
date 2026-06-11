@@ -5,6 +5,7 @@
 
 pub mod commit;
 pub mod config;
+pub(crate) mod generate;
 pub mod pr;
 pub mod uninstall;
 pub mod update;

@@ -3,7 +3,6 @@ use crate::commands::emit_json;
 use crate::config::resolve::resolve_model;
 use crate::config::Config;
 use crate::git;
-use crate::provider::{build_provider, ChatRequest};
 use crate::tool::commit::{build_messages, postprocess};
 use anyhow::{anyhow, Result};
 use std::io::Write;
@@ -42,57 +41,16 @@ pub async fn run(
     let lang = lang.unwrap_or_else(|| cfg.commit.language.clone());
     let messages = build_messages(&style, &lang, &diff);
 
-    let cache_dir = crate::cache::cache_dir();
-    let cache_key = crate::cache::request_key(&resolved.provider_name, &resolved.model, &messages);
-
-    // Deterministic cache: an identical request (same diff, model, style, language)
-    // reuses the stored message and skips the model request entirely.
-    let mut cached = false;
-    let (message, usage) = match (!no_cache)
-        .then(|| crate::cache::get(&cache_dir, &cache_key))
-        .flatten()
-    {
-        Some(hit) => {
-            cached = true;
-            if !json {
-                println!("(cached — no model request made)");
-            }
-            (hit, crate::provider::Usage::default())
-        }
-        None => {
-            // Test hook: AISH_PROVIDER=mock returns a canned message without network.
-            let provider: Box<dyn crate::provider::Provider> =
-                if std::env::var("AISH_PROVIDER").as_deref() == Ok("mock") {
-                    Box::new(crate::provider::mock::MockProvider::new(
-                        std::env::var("AISH_MOCK_REPLY")
-                            .unwrap_or_else(|_| "feat: add thing".into()),
-                    ))
-                } else {
-                    build_provider(&resolved.provider_name, &resolved).map_err(|e| anyhow!(e))?
-                };
-
-            let resp = provider
-                .chat(ChatRequest {
-                    model: resolved.model.clone(),
-                    messages,
-                    temperature: Some(0.2),
-                })
-                .await
-                .map_err(|e| anyhow!(e))?;
-
-            let message = postprocess(&resp.content);
-            if message.is_empty() {
-                return Err(anyhow!(
-                    "model returned an empty/unusable message; not committing. raw: {:?}",
-                    resp.content
-                ));
-            }
-            if !no_cache {
-                let _ = crate::cache::put(&cache_dir, &cache_key, &message);
-            }
-            (message, resp.usage.unwrap_or_default())
-        }
-    };
+    let generated =
+        crate::commands::generate::generate(&resolved, messages, no_cache, json).await?;
+    let (cached, usage) = (generated.cached, generated.usage);
+    let message = postprocess(&generated.raw);
+    if message.is_empty() {
+        return Err(anyhow!(
+            "model returned an empty/unusable message; not committing. raw: {:?}",
+            generated.raw
+        ));
+    }
 
     if !json {
         println!("\nSuggested commit:\n\n{message}\n");

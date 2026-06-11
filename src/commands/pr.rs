@@ -3,7 +3,6 @@ use crate::commands::emit_json;
 use crate::config::resolve::resolve_model;
 use crate::config::Config;
 use crate::git;
-use crate::provider::{build_provider, ChatRequest};
 use crate::tool::pr::{build_messages, parse_response, PrDescription};
 use anyhow::{anyhow, Result};
 use std::io::Write;
@@ -41,51 +40,15 @@ pub async fn run(
     let lang = lang.unwrap_or_else(|| cfg.commit.language.clone());
     let messages = build_messages(&lang, &commits, &diff);
 
-    let cache_dir = crate::cache::cache_dir();
-    let cache_key = crate::cache::request_key(&resolved.provider_name, &resolved.model, &messages);
+    let generated =
+        crate::commands::generate::generate(&resolved, messages, no_cache, json).await?;
+    let (cached, usage) = (generated.cached, generated.usage);
 
-    let mut cached = false;
-    let (raw, usage) = match (!no_cache)
-        .then(|| crate::cache::get(&cache_dir, &cache_key))
-        .flatten()
-    {
-        Some(hit) => {
-            cached = true;
-            if !json {
-                println!("(cached — no model request made)");
-            }
-            (hit, crate::provider::Usage::default())
-        }
-        None => {
-            // Test hook: AISH_PROVIDER=mock returns a canned reply without network.
-            let provider: Box<dyn crate::provider::Provider> =
-                if std::env::var("AISH_PROVIDER").as_deref() == Ok("mock") {
-                    Box::new(crate::provider::mock::MockProvider::new(
-                        std::env::var("AISH_MOCK_REPLY")
-                            .unwrap_or_else(|_| "feat: add thing\n\nBody.".into()),
-                    ))
-                } else {
-                    build_provider(&resolved.provider_name, &resolved).map_err(|e| anyhow!(e))?
-                };
-
-            let resp = provider
-                .chat(ChatRequest {
-                    model: resolved.model.clone(),
-                    messages,
-                    temperature: Some(0.2),
-                })
-                .await
-                .map_err(|e| anyhow!(e))?;
-
-            if !no_cache {
-                let _ = crate::cache::put(&cache_dir, &cache_key, &resp.content);
-            }
-            (resp.content, resp.usage.unwrap_or_default())
-        }
-    };
-
-    let pr = parse_response(&raw).ok_or_else(|| {
-        anyhow!("model returned an empty/unusable reply; not creating a PR. raw: {raw:?}")
+    let pr = parse_response(&generated.raw).ok_or_else(|| {
+        anyhow!(
+            "model returned an empty/unusable reply; not creating a PR. raw: {:?}",
+            generated.raw
+        )
     })?;
 
     if !json {
