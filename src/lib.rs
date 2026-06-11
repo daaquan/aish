@@ -8,4 +8,6 @@ pub mod editor;
 pub mod git;
 pub mod provider;
 pub mod tool;
+pub mod uninstall;
+pub mod update;
 pub mod usage;

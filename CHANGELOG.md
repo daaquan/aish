@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `aish update` — self-update from GitHub releases (#19). Compares the
+  running version against the latest release tag, downloads the matching
+  `aish-<OS>-<arch>` asset, and atomically replaces the binary. Supports
+  `--check` (report only; nonzero exit when outdated, usable as a CI gate),
+  `--version <tag>` to pin a release, and the global `--json` flag.
+  Refuses to touch binaries installed via `cargo install`.
+- `aish uninstall` — remove the installed binary (#20). Prompts for
+  confirmation (default no); `--yes` skips the prompt, `--purge` also
+  deletes the data dir (`$AISH_HOME`, default `~/.aish`) after path-safety
+  validation. Without `--purge` the data dir is kept and its size reported.
+
 ## [0.4.0] — 2026-06-11
 
 ### Changed

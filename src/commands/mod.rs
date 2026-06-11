@@ -5,6 +5,8 @@
 
 pub mod commit;
 pub mod config;
+pub mod uninstall;
+pub mod update;
 
 use crate::audit;
 use crate::cli::{Cli, Command, ConfigAction, ModelsAction, ProvidersAction};
@@ -33,6 +35,8 @@ pub async fn run(cli: Cli) -> Result<()> {
             signoff,
             no_cache,
         } => commit::run(apply, model, style, lang, signoff, no_cache, json).await,
+        Command::Update { check, version } => update::run(check, version, json).await,
+        Command::Uninstall { purge, yes } => uninstall::run(purge, yes, json),
     }
 }
 

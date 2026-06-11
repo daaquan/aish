@@ -58,6 +58,24 @@ pub enum Command {
     },
     /// Report token usage and estimated cost from the audit log.
     Usage,
+    /// Update aish to the latest GitHub release (or a pinned tag).
+    Update {
+        /// Only report whether a newer release exists; nonzero exit if outdated.
+        #[arg(long)]
+        check: bool,
+        /// Install a specific release tag instead of the latest (e.g. 0.5.0).
+        #[arg(long)]
+        version: Option<String>,
+    },
+    /// Remove the aish binary (and optionally the ~/.aish data dir).
+    Uninstall {
+        /// Also delete the data dir ($AISH_HOME, default ~/.aish): config, cache, audit log.
+        #[arg(long)]
+        purge: bool,
+        /// Skip the confirmation prompt.
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]

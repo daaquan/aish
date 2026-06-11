@@ -46,6 +46,21 @@ aish usage --json               # {"by_model":{...},"total":{...}}
 > (`$AISH_MOCK_REPLY`) without calling any provider — used by the test suite
 > and useful for offline/CI smoke checks.
 
+## Updating & uninstalling
+
+```bash
+aish update              # self-update to the latest GitHub release
+aish update --check      # report only; nonzero exit when outdated (CI gate)
+aish update --version 0.5.0   # pin a specific release tag
+
+aish uninstall           # remove the binary (asks first; keeps ~/.aish)
+aish uninstall --purge   # also delete ~/.aish (config, cache, audit log)
+aish uninstall --yes     # skip the confirmation prompt
+```
+
+Binaries installed via `cargo install` are detected and left alone — use
+`cargo install aish` / `cargo uninstall aish` there instead.
+
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
