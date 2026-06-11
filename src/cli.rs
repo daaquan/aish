@@ -112,6 +112,11 @@ pub enum Command {
     },
     /// Report token usage and estimated cost from the audit log.
     Usage,
+    /// Inspect or empty the response cache.
+    Cache {
+        #[command(subcommand)]
+        action: CacheAction,
+    },
     /// Update aish to the latest GitHub release (or a pinned tag).
     Update {
         /// Only report whether a newer release exists; nonzero exit if outdated.
@@ -140,6 +145,18 @@ pub enum ConfigAction {
     },
     /// Validate the config and report problems without making any requests.
     Check,
+}
+
+#[derive(Subcommand)]
+pub enum CacheAction {
+    /// Report entry count and total size of the cache.
+    Stats,
+    /// Delete all cached responses.
+    Clear {
+        /// Skip the confirmation prompt.
+        #[arg(long, short = 'y')]
+        yes: bool,
+    },
 }
 
 #[derive(Subcommand)]

@@ -20,6 +20,8 @@ aish commit --signoff  # add a DCO Signed-off-by trailer
 Answering `e` opens `$EDITOR` on the suggestion and re-asks with the edited
 message. Identical requests (same diff, model, style, language) are served
 from a local cache without a model call (`--no-cache` to bypass).
+Inspect or empty the cache with `aish cache stats` / `aish cache clear`
+(`--yes` skips the prompt).
 
 Configure style, language, and model alias in `~/.aish/config.yaml`
 (`aish config init` writes a commented template):

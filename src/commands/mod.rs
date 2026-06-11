@@ -3,6 +3,7 @@
 //! argv and forwards here, so every command is callable (and testable)
 //! without spawning the binary.
 
+pub mod cache;
 pub mod changelog;
 pub mod commit;
 pub mod config;
@@ -13,7 +14,7 @@ pub mod uninstall;
 pub mod update;
 
 use crate::audit;
-use crate::cli::{Cli, Command, ConfigAction, ModelsAction, ProvidersAction};
+use crate::cli::{CacheAction, Cli, Command, ConfigAction, ModelsAction, ProvidersAction};
 use crate::config::Config;
 use anyhow::{Context, Result};
 
@@ -31,6 +32,10 @@ pub async fn run(cli: Cli) -> Result<()> {
             action: ModelsAction::List,
         } => models_list(json),
         Command::Usage => usage(json),
+        Command::Cache { action } => match action {
+            CacheAction::Stats => cache::stats(json),
+            CacheAction::Clear { yes } => cache::clear(yes, json),
+        },
         Command::Commit {
             apply,
             model,

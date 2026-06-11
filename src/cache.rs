@@ -77,6 +77,46 @@ pub fn put(dir: &Path, key: &str, value: &str) -> std::io::Result<()> {
     std::fs::write(entry_path(dir, key), value)
 }
 
+/// Entry count and total size in bytes of the cache directory.
+/// A missing directory counts as an empty cache.
+pub fn stats(dir: &Path) -> std::io::Result<(usize, u64)> {
+    let mut count = 0;
+    let mut bytes = 0;
+    for entry in entries(dir)? {
+        count += 1;
+        bytes += entry.metadata()?.len();
+    }
+    Ok((count, bytes))
+}
+
+/// Delete every cache entry. Returns the number of entries removed.
+/// A missing directory counts as an empty cache.
+pub fn clear(dir: &Path) -> std::io::Result<usize> {
+    let mut removed = 0;
+    for entry in entries(dir)? {
+        std::fs::remove_file(entry.path())?;
+        removed += 1;
+    }
+    Ok(removed)
+}
+
+/// Cache entry files in `dir`. A missing directory yields no entries.
+fn entries(dir: &Path) -> std::io::Result<Vec<std::fs::DirEntry>> {
+    let read = match std::fs::read_dir(dir) {
+        Ok(read) => read,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+        Err(e) => return Err(e),
+    };
+    let mut out = Vec::new();
+    for entry in read {
+        let entry = entry?;
+        if entry.path().extension().is_some_and(|e| e == "txt") {
+            out.push(entry);
+        }
+    }
+    Ok(out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -111,6 +151,36 @@ mod tests {
         let one = request_key("ab", "c", &[]);
         let two = request_key("a", "bc", &[]);
         assert_ne!(one, two);
+    }
+
+    #[test]
+    fn stats_empty_for_missing_or_empty_dir() {
+        let dir = tempdir().unwrap();
+        let missing = dir.path().join("nope");
+        assert_eq!(stats(&missing).unwrap(), (0, 0));
+        assert_eq!(stats(dir.path()).unwrap(), (0, 0));
+    }
+
+    #[test]
+    fn stats_counts_entries_and_bytes() {
+        let dir = tempdir().unwrap();
+        put(dir.path(), "aaaa", "12345").unwrap();
+        put(dir.path(), "bbbb", "123").unwrap();
+        let (count, bytes) = stats(dir.path()).unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(bytes, 8);
+    }
+
+    #[test]
+    fn clear_removes_all_entries_and_reports_count() {
+        let dir = tempdir().unwrap();
+        put(dir.path(), "aaaa", "x").unwrap();
+        put(dir.path(), "bbbb", "y").unwrap();
+        assert_eq!(clear(dir.path()).unwrap(), 2);
+        assert_eq!(stats(dir.path()).unwrap(), (0, 0));
+        // Idempotent: clearing again (or a missing dir) removes nothing.
+        assert_eq!(clear(dir.path()).unwrap(), 0);
+        assert_eq!(clear(&dir.path().join("nope")).unwrap(), 0);
     }
 
     #[test]
