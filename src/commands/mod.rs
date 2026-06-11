@@ -23,7 +23,7 @@ pub async fn run(cli: Cli) -> Result<()> {
     match cli.command {
         Command::Config { action } => match action {
             ConfigAction::Init { force } => config::init(force, json),
-            ConfigAction::Check => config::check(json),
+            ConfigAction::Check { ping } => config::check(ping, json).await,
         },
         Command::Providers {
             action: ProvidersAction::List,

@@ -81,6 +81,7 @@ errors, so it works as a pipeline gate.
 
 ```bash
 aish config check --json        # {"ok":true|false,"issues":[...]} ; nonzero exit on errors
+aish config check --ping        # also send one real request per provider (auth/network gate)
 aish usage --json               # {"by_model":{...},"total":{...}}
 ```
 

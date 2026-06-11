@@ -149,7 +149,12 @@ pub enum ConfigAction {
         force: bool,
     },
     /// Validate the config and report problems without making any requests.
-    Check,
+    Check {
+        /// After static validation, send one minimal request per configured
+        /// provider to verify reachability and credentials.
+        #[arg(long)]
+        ping: bool,
+    },
 }
 
 #[derive(Subcommand)]
