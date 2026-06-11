@@ -77,6 +77,24 @@ pub enum Command {
         #[arg(long)]
         no_cache: bool,
     },
+    /// Generate CHANGELOG entries from commits between two refs.
+    Changelog {
+        /// Start of the commit range (default: the latest tag).
+        #[arg(long)]
+        from: Option<String>,
+        /// End of the commit range (default: HEAD).
+        #[arg(long)]
+        to: Option<String>,
+        /// Override the model alias from config.
+        #[arg(long)]
+        model: Option<String>,
+        /// Override output language.
+        #[arg(long)]
+        lang: Option<String>,
+        /// Bypass the response cache (force a fresh model request).
+        #[arg(long)]
+        no_cache: bool,
+    },
     /// Write a commented config template to ~/.aish/config.yaml.
     Config {
         #[command(subcommand)]

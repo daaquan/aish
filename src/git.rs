@@ -116,6 +116,24 @@ pub fn branch_log(dir: &Path, base: &str) -> Result<String, GitError> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// Most recent tag reachable from HEAD (`git describe --tags --abbrev=0`),
+/// or None when the repository has no tags.
+pub fn latest_tag(dir: &Path) -> Result<Option<String>, GitError> {
+    let out = run(dir, &["describe", "--tags", "--abbrev=0"])?;
+    if !out.status.success() {
+        return Ok(None);
+    }
+    let tag = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Ok((!tag.is_empty()).then_some(tag))
+}
+
+/// One-line subjects of commits in `from..to`.
+pub fn log_range(dir: &Path, from: &str, to: &str) -> Result<String, GitError> {
+    let range = format!("{from}..{to}");
+    let out = run_checked(dir, &["log", "--format=%s", &range])?;
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
 /// Create a commit with the given message.
 /// Pass `signoff: true` to append a DCO `Signed-off-by` trailer (`git commit -s`).
 pub fn commit(dir: &Path, message: &str, signoff: bool) -> Result<(), GitError> {
@@ -320,6 +338,55 @@ mod tests {
             .unwrap();
         assert!(branch_log(p, "main").unwrap().trim().is_empty());
         assert!(branch_diff(p, "main").unwrap().trim().is_empty());
+    }
+
+    #[test]
+    fn latest_tag_none_without_tags_then_some_after_tagging() {
+        let dir = init_repo();
+        let p = dir.path();
+        std::fs::write(p.join("a.txt"), "x").unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["add", "a.txt"])
+            .status()
+            .unwrap();
+        commit(p, "init", false).unwrap();
+        assert_eq!(latest_tag(p).unwrap(), None);
+        Command::new("git")
+            .current_dir(p)
+            .args(["tag", "v0.1.0"])
+            .status()
+            .unwrap();
+        assert_eq!(latest_tag(p).unwrap().as_deref(), Some("v0.1.0"));
+    }
+
+    #[test]
+    fn log_range_lists_subjects_between_refs() {
+        let dir = init_repo();
+        let p = dir.path();
+        std::fs::write(p.join("a.txt"), "x").unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["add", "a.txt"])
+            .status()
+            .unwrap();
+        commit(p, "init", false).unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["tag", "v0.1.0"])
+            .status()
+            .unwrap();
+        std::fs::write(p.join("b.txt"), "y").unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["add", "b.txt"])
+            .status()
+            .unwrap();
+        commit(p, "feat: add b", false).unwrap();
+
+        let log = log_range(p, "v0.1.0", "HEAD").unwrap();
+        assert!(log.contains("feat: add b"));
+        assert!(!log.contains("init"));
     }
 
     #[test]

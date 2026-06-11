@@ -3,6 +3,7 @@
 //! argv and forwards here, so every command is callable (and testable)
 //! without spawning the binary.
 
+pub mod changelog;
 pub mod commit;
 pub mod config;
 pub(crate) mod generate;
@@ -52,6 +53,13 @@ pub async fn run(cli: Cli) -> Result<()> {
             lang,
             no_cache,
         } => review::run(branch, base, model, lang, no_cache, json).await,
+        Command::Changelog {
+            from,
+            to,
+            model,
+            lang,
+            no_cache,
+        } => changelog::run(from, to, model, lang, no_cache, json).await,
         Command::Update { check, version } => update::run(check, version, json).await,
         Command::Uninstall { purge, yes } => uninstall::run(purge, yes, json),
     }

@@ -60,6 +60,17 @@ aish review --base develop  # diff against a specific base branch
 aish review --json          # machine-readable findings for CI
 ```
 
+## Changelog entries
+
+`aish changelog` summarizes commits between two refs into Keep-a-Changelog
+style entries (Added/Changed/Fixed/Removed), ready to paste into a release:
+
+```bash
+aish changelog                  # latest tag .. HEAD
+aish changelog --from v0.4.0    # explicit range start
+aish changelog --from v0.4.0 --to v0.5.0
+```
+
 ### JSON output (CI/CD)
 
 The global `--json` flag makes built-in commands emit machine-readable JSON on

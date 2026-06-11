@@ -1,4 +1,5 @@
 // SPDX-License-Identifier: MIT
+pub mod changelog;
 pub mod commit;
 pub mod pr;
 pub mod review;
