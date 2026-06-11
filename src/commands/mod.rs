@@ -32,6 +32,12 @@ pub async fn run(cli: Cli) -> Result<()> {
             action: ModelsAction::List,
         } => models_list(json),
         Command::Usage => usage(json),
+        Command::Completions { shell } => {
+            use clap::CommandFactory;
+            let mut cmd = Cli::command();
+            clap_complete::generate(shell, &mut cmd, "aish", &mut std::io::stdout());
+            Ok(())
+        }
         Command::Cache { action } => match action {
             CacheAction::Stats => cache::stats(json),
             CacheAction::Clear { yes } => cache::clear(yes, json),

@@ -112,6 +112,11 @@ pub enum Command {
     },
     /// Report token usage and estimated cost from the audit log.
     Usage,
+    /// Print a shell completion script (bash, zsh, fish, elvish, powershell).
+    Completions {
+        /// Target shell.
+        shell: clap_complete::Shell,
+    },
     /// Inspect or empty the response cache.
     Cache {
         #[command(subcommand)]
