@@ -27,11 +27,17 @@ fn floor_char_boundary(s: &str, max: usize) -> usize {
 /// Cap a diff at `MAX_DIFF_CHARS`, cutting on a UTF-8 char boundary and
 /// appending a truncation marker.
 pub(crate) fn truncate_diff(diff: &str) -> String {
-    if diff.len() > MAX_DIFF_CHARS {
-        let cut = floor_char_boundary(diff, MAX_DIFF_CHARS);
-        format!("{}\n[diff truncated]", &diff[..cut])
+    truncate_input(diff, "[diff truncated]")
+}
+
+/// Cap any prompt input at `MAX_DIFF_CHARS`, cutting on a UTF-8 char boundary
+/// and appending `marker` when something was dropped.
+pub(crate) fn truncate_input(s: &str, marker: &str) -> String {
+    if s.len() > MAX_DIFF_CHARS {
+        let cut = floor_char_boundary(s, MAX_DIFF_CHARS);
+        format!("{}\n{marker}", &s[..cut])
     } else {
-        diff.to_string()
+        s.to_string()
     }
 }
 

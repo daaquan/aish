@@ -95,6 +95,20 @@ pub enum Command {
         #[arg(long)]
         no_cache: bool,
     },
+    /// Ask a one-shot question; piped stdin is included as context.
+    Ask {
+        /// The question to ask.
+        question: String,
+        /// Override the model alias from config.
+        #[arg(long)]
+        model: Option<String>,
+        /// Override output language.
+        #[arg(long)]
+        lang: Option<String>,
+        /// Bypass the response cache (force a fresh model request).
+        #[arg(long)]
+        no_cache: bool,
+    },
     /// Write a commented config template to ~/.aish/config.yaml.
     Config {
         #[command(subcommand)]
