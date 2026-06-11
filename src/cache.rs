@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: MIT
 //! Deterministic on-disk cache for AI chat responses.
 //!
 //! The cache key is a stable hash of the exact request (provider, model, and
