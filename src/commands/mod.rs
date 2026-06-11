@@ -7,6 +7,7 @@ pub mod commit;
 pub mod config;
 pub(crate) mod generate;
 pub mod pr;
+pub mod review;
 pub mod uninstall;
 pub mod update;
 
@@ -44,6 +45,13 @@ pub async fn run(cli: Cli) -> Result<()> {
             base,
             no_cache,
         } => pr::run(apply, model, lang, base, no_cache, json).await,
+        Command::Review {
+            branch,
+            base,
+            model,
+            lang,
+            no_cache,
+        } => review::run(branch, base, model, lang, no_cache, json).await,
         Command::Update { check, version } => update::run(check, version, json).await,
         Command::Uninstall { purge, yes } => uninstall::run(purge, yes, json),
     }

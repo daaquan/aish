@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pub mod commit;
 pub mod pr;
+pub mod review;
 
 /// Internal tool abstraction. In v0.1 only `CommitTool` implements it; the
 /// registry exists so a future external (subprocess) loader can register tools
@@ -8,6 +9,23 @@ pub mod pr;
 pub trait Tool {
     /// Canonical name, e.g. `git.commit.message.generate`.
     fn name(&self) -> &'static str;
+}
+
+/// Strip only an outer ``` fence from a model reply, preserving inner code
+/// blocks. Returns the trimmed remainder ("" when nothing is left).
+pub(crate) fn strip_outer_fence(raw: &str) -> &str {
+    let mut s = raw.trim();
+    if s.starts_with("```") {
+        if let Some(idx) = s.find('\n') {
+            s = &s[idx + 1..];
+        } else {
+            s = "";
+        }
+        if let Some(idx) = s.rfind("```") {
+            s = &s[..idx];
+        }
+    }
+    s.trim()
 }
 
 #[derive(Default)]

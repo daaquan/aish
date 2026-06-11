@@ -59,6 +59,24 @@ pub enum Command {
         #[arg(long)]
         no_cache: bool,
     },
+    /// Model-review the staged diff (or the branch diff with --branch).
+    Review {
+        /// Review the diff against the default branch instead of the staged diff.
+        #[arg(long)]
+        branch: bool,
+        /// Base branch to diff against (implies --branch).
+        #[arg(long)]
+        base: Option<String>,
+        /// Override the model alias from config.
+        #[arg(long)]
+        model: Option<String>,
+        /// Override output language.
+        #[arg(long)]
+        lang: Option<String>,
+        /// Bypass the response cache (force a fresh model request).
+        #[arg(long)]
+        no_cache: bool,
+    },
     /// Write a commented config template to ~/.aish/config.yaml.
     Config {
         #[command(subcommand)]

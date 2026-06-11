@@ -43,18 +43,7 @@ pub fn parse_response(raw: &str) -> Option<PrDescription> {
     // Strip only an outer ``` fence; the body may legitimately contain
     // inner code blocks, so a full fence rejection (like commit's
     // postprocess) would be wrong here.
-    let mut s = raw.trim();
-    if s.starts_with("```") {
-        if let Some(idx) = s.find('\n') {
-            s = &s[idx + 1..];
-        } else {
-            s = "";
-        }
-        if let Some(idx) = s.rfind("```") {
-            s = &s[..idx];
-        }
-    }
-    let cleaned = s.trim();
+    let cleaned = crate::tool::strip_outer_fence(raw);
     if cleaned.is_empty() {
         return None;
     }

@@ -47,6 +47,19 @@ Like `aish commit`, answering `e` opens `$EDITOR` (first line = title, rest =
 body), responses are cached (`--no-cache` to bypass), and `--model` / `--lang`
 override the config.
 
+## Code review
+
+`aish review` sends a diff to the model and prints findings grouped by
+severity (CRITICAL/HIGH/MEDIUM/LOW):
+
+```bash
+git add .
+aish review                 # review the staged diff
+aish review --branch        # review the branch diff against the default branch
+aish review --base develop  # diff against a specific base branch
+aish review --json          # machine-readable findings for CI
+```
+
 ### JSON output (CI/CD)
 
 The global `--json` flag makes built-in commands emit machine-readable JSON on
