@@ -9,6 +9,40 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-06-11
+
+### Added
+
+- `aish pr` — generate a PR title/body from the branch diff against the
+  default branch and create the PR via `gh pr create` (#21). Confirm/edit
+  loop like `commit`; `--apply` skips the prompt, `--base` overrides
+  default-branch auto-detection (origin/HEAD → main/master).
+- `aish review` — model review of the staged diff, or the branch diff with
+  `--branch`/`--base` (#22). Findings grouped by severity
+  (CRITICAL/HIGH/MEDIUM/LOW); `--json` for CI consumption.
+- `aish changelog` — Keep-a-Changelog style entries from commits in
+  latest-tag..HEAD, overridable with `--from`/`--to` (#23).
+- `aish cache stats` / `aish cache clear` — inspect or empty the response
+  cache; `clear` confirms first (`-y`/`--yes` skips) (#24).
+- `aish completions <shell>` — completion scripts for bash, zsh, fish,
+  elvish, and powershell via clap_complete (#25).
+- `aish config check --ping` — after static validation, send one minimal
+  request per configured provider to verify reachability and credentials;
+  nonzero exit on any failure (CI gate) (#26).
+- `aish ask "<question>"` — one-shot questions with piped stdin as context
+  (capped at 12k chars), cached like other commands (#27).
+
+### Changed
+
+- All generating commands now share one cache + provider pipeline
+  (`commands::generate`); the cache stores the raw model reply.
+
+### Fixed
+
+- Stale `AGPL-3.0-only` SPDX marker in `cache.rs` corrected to MIT.
+- E2E flake: `uninstall` tests no longer hit ETXTBSY under parallel test
+  runs (test binary is now copied via spawned `cp`) (#28).
+
 ## [0.5.0] — 2026-06-11
 
 ### Added
@@ -121,7 +155,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` install script and project governance foundation
   (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, design specs).
 
-[Unreleased]: https://github.com/daaquan/aish/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/daaquan/aish/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/daaquan/aish/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/daaquan/aish/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/daaquan/aish/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/daaquan/aish/compare/v0.3.0...v0.3.1
