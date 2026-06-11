@@ -15,11 +15,23 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 const CURRENT: &str = env!("CARGO_PKG_VERSION");
 
 /// Copy the built `aish` into `<dir>/<sub>/aish` and return the copy's path.
+///
+/// Copies via a spawned `cp` instead of `std::fs::copy`: an in-process copy
+/// holds a write fd on the destination that a concurrently forked test child
+/// inherits until its exec, and exec-ing the destination inside that window
+/// fails with ETXTBSY (#28). With `cp` the write fd never exists in this
+/// process, so it cannot leak into forks.
 fn copy_bin(dir: &Path, sub: &str) -> PathBuf {
     let dest_dir = dir.join(sub);
     std::fs::create_dir_all(&dest_dir).unwrap();
     let dest = dest_dir.join("aish");
-    std::fs::copy(assert_cmd::cargo::cargo_bin("aish"), &dest).unwrap();
+    let status = Command::new("cp")
+        .arg("-p")
+        .arg(assert_cmd::cargo::cargo_bin("aish"))
+        .arg(&dest)
+        .status()
+        .unwrap();
+    assert!(status.success(), "cp failed copying test binary");
     dest
 }
 
