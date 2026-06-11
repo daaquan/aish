@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-11
+
 ### Added
 
 - `aish update` — self-update from GitHub releases (#19). Compares the
@@ -119,7 +121,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` install script and project governance foundation
   (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, design specs).
 
-[Unreleased]: https://github.com/daaquan/aish/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/daaquan/aish/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/daaquan/aish/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/daaquan/aish/compare/v0.3.1...v0.4.0
 [0.3.1]: https://github.com/daaquan/aish/compare/v0.3.0...v0.3.1
 [0.3.0]: https://github.com/daaquan/aish/compare/v0.2.1...v0.3.0
