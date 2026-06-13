@@ -97,7 +97,13 @@ impl Config {
             if std::env::var_os("AISH_CONFIG").is_none()
                 && Self::write_template(&path, false).is_ok()
             {
-                // fall through to read the freshly written template
+                // Point first-run users at the wizard; the template ships with
+                // Anthropic + Ollama but no API keys, so commands fail until one
+                // is configured. To stderr so `--json` stdout stays clean.
+                eprintln!(
+                    "Created a default config at {} — run `aish setup` to add provider API keys.",
+                    path.display()
+                );
             } else {
                 return Err(ConfigError::NotFound(path));
             }

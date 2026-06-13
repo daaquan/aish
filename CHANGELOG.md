@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.1] — 2026-06-13
+
+### Changed
+
+- On first-run config auto-generation, aish now prints a one-line notice
+  pointing at `aish setup` (the template ships without API keys, so commands
+  fail until one is configured).
+
 ## [0.7.0] — 2026-06-13
 
 ### Added
@@ -177,7 +185,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` install script and project governance foundation
   (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, design specs).
 
-[Unreleased]: https://github.com/daaquan/aish/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/daaquan/aish/compare/v0.7.1...HEAD
+[0.7.1]: https://github.com/daaquan/aish/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/daaquan/aish/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/daaquan/aish/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/daaquan/aish/compare/v0.4.0...v0.5.0
