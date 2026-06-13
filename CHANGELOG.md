@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-06-13
+
+### Added
+
+- `aish setup` — interactive configuration wizard. Prompts to enable each
+  provider, choose how its API key is stored (plaintext in the config or a
+  `${ENV_VAR}` reference, per key), pick a model, and select a default alias,
+  then writes `~/.aish/config.yaml` (mode `0600`, backing up any existing file).
+- `aish setup --repair` — restore the template config, backing up the current
+  file to `<path>.bak`.
+- A config is now created automatically on first run when none exists.
+- New provider examples in the config template: `openrouter`, `deepseek`,
+  and `groq` (all OpenAI-compatible).
+
+### Changed
+
+- Corrected the `kilo` provider endpoint to `https://api.kilo.ai/api/gateway`.
+
+### Removed
+
+- `aish config init` — superseded by `aish setup` and first-run auto-generation.
+
 ## [0.6.0] — 2026-06-11
 
 ### Added
@@ -155,7 +177,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` install script and project governance foundation
   (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, design specs).
 
-[Unreleased]: https://github.com/daaquan/aish/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/daaquan/aish/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/daaquan/aish/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/daaquan/aish/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/daaquan/aish/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/daaquan/aish/compare/v0.3.1...v0.4.0
