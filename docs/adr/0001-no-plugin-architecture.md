@@ -49,8 +49,8 @@ is archived (kept read-only for history). The marketplace plan is cancelled.
 - Users upgrading from v0.2/v0.3: `[plugins.commit]` config tables are
   ignored (the top-level `commit:` block is canonical again); installed
   plugin binaries under `~/.aish` are inert and can be deleted.
-- The v0.2 plugin design specs under `docs/superpowers/` remain as
-  historical record; this ADR supersedes them.
+- The v0.2 plugin design specs (formerly under `docs/superpowers/`, since
+  removed) are superseded by this ADR.
 
 ## Revisit when
 

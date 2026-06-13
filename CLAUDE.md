@@ -4,9 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-Working CLI (v0.4.x). `aish commit` generates commit messages from staged
-diffs via configurable model providers. Architecture decisions live in
-`docs/adr/`; older design specs in `docs/superpowers/` are historical.
+Working CLI (v0.6.x). An AI copilot for the command line: built-in
+subcommands (`commit`, `pr`, `review`, `changelog`, `ask`, …) wrap everyday
+developer commands and use configurable model providers to draft clean
+summaries and troubleshoot output. Architecture decisions live in `docs/adr/`.
 
 ## Language
 

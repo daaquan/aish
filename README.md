@@ -2,8 +2,11 @@
 
 <!-- SPDX-License-Identifier: MIT -->
 
-> See [`docs/superpowers/specs/`](docs/superpowers/specs/) for design specs and
-> [`docs/adr/`](docs/adr/) for architecture decisions.
+> **AI copilot for your command line.** aish wraps the commands developers run
+> every day — commit, PR, review, changelog, ask — and uses a model to draft
+> clean summaries and troubleshoot output, all as built-in subcommands.
+>
+> See [`docs/adr/`](docs/adr/) for architecture decisions.
 
 ## Commit messages
 
