@@ -1,19 +1,7 @@
 // SPDX-License-Identifier: MIT
 use crate::commands::emit_json;
 use crate::config::{Config, IssueLevel};
-use anyhow::{anyhow, Context, Result};
-
-pub fn init(force: bool, json: bool) -> Result<()> {
-    let path = Config::default_path();
-    Config::write_template(&path, force)
-        .with_context(|| format!("writing config to {}", path.display()))?;
-    if json {
-        emit_json(&serde_json::json!({ "wrote": path.display().to_string() }));
-    } else {
-        println!("Wrote config template to {}", path.display());
-    }
-    Ok(())
-}
+use anyhow::{anyhow, Result};
 
 pub async fn check(ping: bool, json: bool) -> Result<()> {
     let cfg = Config::load()?;

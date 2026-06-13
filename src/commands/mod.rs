@@ -11,6 +11,7 @@ pub mod config;
 pub(crate) mod generate;
 pub mod pr;
 pub mod review;
+pub mod setup;
 pub mod uninstall;
 pub mod update;
 
@@ -22,8 +23,8 @@ use anyhow::{Context, Result};
 pub async fn run(cli: Cli) -> Result<()> {
     let json = cli.json;
     match cli.command {
+        Command::Setup { repair } => setup::run(repair, json),
         Command::Config { action } => match action {
-            ConfigAction::Init { force } => config::init(force, json),
             ConfigAction::Check { ping } => config::check(ping, json).await,
         },
         Command::Providers {

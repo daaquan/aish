@@ -7,7 +7,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
-    #[error("config file not found at {0} — run `aish config init`")]
+    #[error("config file not found at {0} — run `aish setup`")]
     NotFound(PathBuf),
     #[error("invalid config: {0}")]
     Parse(String),
@@ -90,7 +90,17 @@ impl Config {
     pub fn load() -> Result<Self, ConfigError> {
         let path = Self::default_path();
         if !path.exists() {
-            return Err(ConfigError::NotFound(path));
+            // First run with the default path: lay down the template so the
+            // tool works out of the box. A custom $AISH_CONFIG pointed at a
+            // missing file is the user naming a specific file — don't create a
+            // different one for them; surface NotFound instead.
+            if std::env::var_os("AISH_CONFIG").is_none()
+                && Self::write_template(&path, false).is_ok()
+            {
+                // fall through to read the freshly written template
+            } else {
+                return Err(ConfigError::NotFound(path));
+            }
         }
         let raw = std::fs::read_to_string(&path)
             .map_err(|e| ConfigError::Io(path.clone(), e.to_string()))?;
@@ -196,7 +206,7 @@ impl Config {
         issues
     }
 
-    /// Commented YAML template for `aish config init`.
+    /// Commented YAML template written on first run and by `aish setup --repair`.
     pub fn template() -> &'static str {
         r#"# aish configuration (~/.aish/config.yaml)
 #
@@ -245,11 +255,23 @@ commit:
                 ),
             ));
         }
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(path, Self::template())
+        write_secure(path, Self::template())
     }
+}
+
+/// Write `contents` to `path` (creating parent dirs), restricting it to the
+/// owner (`0600`) on unix since the file may hold plaintext API keys.
+pub fn write_secure(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, contents)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
 }
 
 /// Expand `${VAR}` occurrences. Missing variable → empty string (validated later when the

@@ -109,7 +109,13 @@ pub enum Command {
         #[arg(long)]
         no_cache: bool,
     },
-    /// Write a commented config template to ~/.aish/config.yaml.
+    /// Interactively configure providers and a default model.
+    Setup {
+        /// Restore the initial template config (backs up any existing file).
+        #[arg(long)]
+        repair: bool,
+    },
+    /// Validate the aish configuration.
     Config {
         #[command(subcommand)]
         action: ConfigAction,
@@ -158,10 +164,6 @@ pub enum Command {
 
 #[derive(Subcommand)]
 pub enum ConfigAction {
-    Init {
-        #[arg(long)]
-        force: bool,
-    },
     /// Validate the config and report problems without making any requests.
     Check {
         /// After static validation, send one minimal request per configured

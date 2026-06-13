@@ -26,8 +26,11 @@ from a local cache without a model call (`--no-cache` to bypass).
 Inspect or empty the cache with `aish cache stats` / `aish cache clear`
 (`--yes` skips the prompt).
 
-Configure style, language, and model alias in `~/.aish/config.yaml`
-(`aish config init` writes a commented template):
+A config is created automatically on first run. Run `aish setup` for an
+interactive wizard that prompts for provider API keys (stored as plaintext or
+`${ENV_VAR}` references) and a default model, or `aish setup --repair` to
+restore the template (backing up any existing file). Configure style, language,
+and model alias in `~/.aish/config.yaml`:
 
 ```yaml
 commit:
