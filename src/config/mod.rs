@@ -203,12 +203,18 @@ impl Config {
 # Only providers you leave uncommented are loaded. The default template keeps
 # Anthropic and local Ollama available, while other example providers are
 # commented so unset optional API keys never block config loading.
+#
+# Any provider other than `anthropic` and `google` is treated as
+# OpenAI-compatible: set `base_url` to its endpoint and `api_key` to its key.
 providers:
   anthropic: { api_key: ${ANTHROPIC_API_KEY} }
   ollama:    { base_url: http://localhost:11434/v1 }
-  # openai: { api_key: ${OPENAI_API_KEY} }
-  # google: { api_key: ${GOOGLE_API_KEY} }
-  # kilo:   { api_key: ${KILO_API_KEY}, base_url: https://gateway.kilo.example/v1 }
+  # openai:     { api_key: ${OPENAI_API_KEY} }
+  # google:     { api_key: ${GOOGLE_API_KEY} }
+  # openrouter: { api_key: ${OPENROUTER_API_KEY}, base_url: https://openrouter.ai/api/v1 }
+  # deepseek:   { api_key: ${DEEPSEEK_API_KEY},   base_url: https://api.deepseek.com/v1 }
+  # groq:       { api_key: ${GROQ_API_KEY},       base_url: https://api.groq.com/openai/v1 }
+  # kilo:       { api_key: ${KILO_API_KEY},       base_url: https://api.kilo.ai/api/gateway }
 
 models:
   default: { provider: anthropic, model: claude-opus-4-8 }
