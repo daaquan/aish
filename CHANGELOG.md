@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-06-14
+
+### Added
+
+- `aish fix <cmd>` — runs a command, streams its combined output through, and
+  on a nonzero exit appends a model-generated diagnosis plus a suggested fix.
+  Always propagates the wrapped command's exit code (safe in scripts and `&&`
+  chains); success without `--always` is a transparent pass-through with no
+  model call. `--shell` runs the command via `sh -c` for pipes and redirects;
+  `--always` diagnoses even on success. Command output is tail-capped at 12k
+  chars (failures live at the end). Diagnoses and suggests only — it never
+  edits files or re-runs the command.
+
 ## [0.7.1] — 2026-06-13
 
 ### Changed
@@ -185,7 +198,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` install script and project governance foundation
   (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, design specs).
 
-[Unreleased]: https://github.com/daaquan/aish/compare/v0.7.1...HEAD
+[Unreleased]: https://github.com/daaquan/aish/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/daaquan/aish/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/daaquan/aish/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/daaquan/aish/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/daaquan/aish/compare/v0.5.0...v0.6.0
