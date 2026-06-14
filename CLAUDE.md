@@ -4,10 +4,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-Working CLI (v0.6.x). An AI copilot for the command line: built-in
-subcommands (`commit`, `pr`, `review`, `changelog`, `ask`, …) wrap everyday
-developer commands and use configurable model providers to draft clean
-summaries and troubleshoot output. Architecture decisions live in `docs/adr/`.
+Working CLI (v0.9.x). An AI copilot for the command line: built-in
+subcommands (`commit`, `pr`, `review`, `changelog`, `ask`, `fix`, `run`, …) wrap
+everyday developer commands and use configurable model providers to draft clean
+summaries, diagnose failures, and turn intent into commands.
 
 ## Language
 
@@ -38,8 +38,7 @@ single test: cargo test <name> -- --test-threads=1
 ## Architecture
 
 Single Rust binary. Tools are **built-in subcommands** — there is no plugin
-system, by decision: see `docs/adr/0001-no-plugin-architecture.md` before
-proposing one.
+system, by decision. Do not propose a plugin architecture.
 
 - `src/main.rs` — CLI dispatch; `run_commit` drives the commit flow
   (staged diff → provider → confirm/edit loop → `git commit`).

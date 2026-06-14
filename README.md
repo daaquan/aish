@@ -3,10 +3,9 @@
 <!-- SPDX-License-Identifier: MIT -->
 
 > **AI copilot for your command line.** aish wraps the commands developers run
-> every day — commit, PR, review, changelog, ask — and uses a model to draft
-> clean summaries and troubleshoot output, all as built-in subcommands.
->
-> See [`docs/adr/`](docs/adr/) for architecture decisions.
+> every day — commit, PR, review, changelog, ask, fix, run — and uses a model to
+> draft clean summaries, diagnose failures, and turn intent into commands, all as
+> built-in subcommands.
 
 ## Commit messages
 
@@ -127,6 +126,22 @@ emits the command without running it. The command runs via `sh -c` (so pipes,
 globs, and `&&` work) and `aish run` propagates its exit code; aborting or
 `--print` exits 0.
 
+## Providers & models
+
+Every command talks to a model through a configurable **alias** (e.g. `default`)
+that resolves to a provider plus a concrete model name. Built-in providers:
+**Anthropic**, **OpenAI-compatible** (incl. Ollama and Kilo), and **Gemini**.
+Inspect what is configured:
+
+```bash
+aish providers list   # configured providers
+aish models list      # model aliases and what they resolve to
+```
+
+Configure these in `~/.aish/config.yaml` (override the path with `$AISH_CONFIG`);
+`aish config check` validates the file and `--ping` verifies each provider is
+reachable with its credentials.
+
 ### JSON output (CI/CD)
 
 The global `--json` flag makes built-in commands emit machine-readable JSON on
@@ -150,6 +165,8 @@ aish completions zsh  > "${fpath[1]}/_aish"                       # zsh
 aish completions bash > /etc/bash_completion.d/aish               # bash
 aish completions fish > ~/.config/fish/completions/aish.fish     # fish
 ```
+
+Also supports `elvish` and `powershell`.
 
 ## Updating & uninstalling
 

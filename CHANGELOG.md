@@ -120,8 +120,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **Breaking:** removed the subprocess plugin system introduced in 0.2.0.
   `commit` is a built-in subcommand again — no `aish plugin install` step.
-  Rationale recorded in
-  [ADR-0001](docs/adr/0001-no-plugin-architecture.md): the complexity of the
+  Rationale (formerly ADR-0001): the complexity of the
   stdio ABI, installer, and two-repo sync was not justified by a single
   plugin, and the install step hurt UX. The `aish plugin` command group is
   gone; `[plugins.<name>]` config tables are ignored (top-level `commit:` is
