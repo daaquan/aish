@@ -91,6 +91,24 @@ cargo build 2>&1 | aish ask "explain this error"
 Piped input is capped at 12k chars. Identical question+context pairs are
 served from the cache (`--no-cache` to bypass).
 
+## Troubleshooting failures
+
+`aish fix` runs a command, streams its output through, and — when it exits
+nonzero — appends a diagnosis and a suggested fix:
+
+```bash
+aish fix cargo build              # diagnose only when the build fails
+aish fix npm test                 # works with any command
+aish fix --shell "make 2>&1 | tail"   # run via `sh -c` for pipes/redirects
+aish fix --always ./deploy.sh     # explain even on success
+```
+
+It **diagnoses and suggests; it never edits files or re-runs the command**,
+and it always exits with the wrapped command's exit code, so it is safe in
+scripts and `&&` chains. On success (without `--always`) it is a transparent
+pass-through and makes no model request. Command output is tail-capped at
+12k chars before being sent (the failure usually lives at the end).
+
 ### JSON output (CI/CD)
 
 The global `--json` flag makes built-in commands emit machine-readable JSON on

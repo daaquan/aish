@@ -8,6 +8,7 @@ pub mod cache;
 pub mod changelog;
 pub mod commit;
 pub mod config;
+pub mod fix;
 pub(crate) mod generate;
 pub mod pr;
 pub mod review;
@@ -79,6 +80,14 @@ pub async fn run(cli: Cli) -> Result<()> {
             lang,
             no_cache,
         } => ask::run(question, model, lang, no_cache, json).await,
+        Command::Fix {
+            cmd,
+            shell,
+            always,
+            model,
+            lang,
+            no_cache,
+        } => fix::run(cmd, shell, always, model, lang, no_cache, json).await,
         Command::Update { check, version } => update::run(check, version, json).await,
         Command::Uninstall { purge, yes } => uninstall::run(purge, yes, json),
     }

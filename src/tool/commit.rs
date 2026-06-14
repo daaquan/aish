@@ -41,6 +41,31 @@ pub(crate) fn truncate_input(s: &str, marker: &str) -> String {
     }
 }
 
+/// Smallest index >= `min` that is a UTF-8 char boundary of `s`.
+fn ceil_char_boundary(s: &str, min: usize) -> usize {
+    if min >= s.len() {
+        return s.len();
+    }
+    let mut i = min;
+    while i < s.len() && !s.is_char_boundary(i) {
+        i += 1;
+    }
+    i
+}
+
+/// Cap `s` at `MAX_DIFF_CHARS` keeping the **tail** (most recent output),
+/// cutting on a UTF-8 char boundary and prefixing `marker` when something was
+/// dropped. Used for command output, where the failure lives at the end —
+/// the opposite of [`truncate_input`], which keeps the head.
+pub(crate) fn truncate_tail(s: &str, marker: &str) -> String {
+    if s.len() > MAX_DIFF_CHARS {
+        let cut = ceil_char_boundary(s, s.len() - MAX_DIFF_CHARS);
+        format!("{marker}\n{}", &s[cut..])
+    } else {
+        s.to_string()
+    }
+}
+
 /// Build the system+user messages for commit-message generation.
 pub fn build_messages(style: &str, language: &str, diff: &str) -> Vec<Message> {
     let system = format!(
@@ -119,6 +144,27 @@ mod tests {
         assert!(msgs[1].content.contains("[diff truncated]"));
         // short prompt prefix + capped diff (<= MAX_DIFF_CHARS) + marker
         assert!(msgs[1].content.len() < MAX_DIFF_CHARS + 200);
+    }
+
+    #[test]
+    fn truncate_tail_keeps_the_end_with_marker() {
+        let s = format!("HEAD{}TAIL_ERROR", "x".repeat(MAX_DIFF_CHARS));
+        let out = super::truncate_tail(&s, "[earlier output truncated]");
+        assert!(out.starts_with("[earlier output truncated]"));
+        assert!(out.ends_with("TAIL_ERROR"));
+        assert!(!out.contains("HEAD"));
+    }
+
+    #[test]
+    fn truncate_tail_leaves_short_input_untouched() {
+        assert_eq!(super::truncate_tail("short", "[m]"), "short");
+    }
+
+    #[test]
+    fn truncate_tail_cuts_on_char_boundary_without_panic() {
+        let s = "あ".repeat(MAX_DIFF_CHARS);
+        let out = super::truncate_tail(&s, "[m]");
+        assert!(out.starts_with("[m]"));
     }
 
     #[test]

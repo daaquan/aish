@@ -109,6 +109,31 @@ pub enum Command {
         #[arg(long)]
         no_cache: bool,
     },
+    /// Run a command and, if it fails, diagnose the failure with the model.
+    ///
+    /// Diagnoses and suggests a fix; it does not edit files or re-run anything.
+    /// The wrapped command's exit code is always propagated.
+    Fix {
+        /// The command to run, e.g. `aish fix cargo test`. Flags after the
+        /// command belong to the command, not to aish.
+        #[arg(trailing_var_arg = true, allow_hyphen_values = true, required = true)]
+        cmd: Vec<String>,
+        /// Run the command via `sh -c` so pipes, redirects, and globs work.
+        #[arg(long)]
+        shell: bool,
+        /// Diagnose even when the command succeeds (exit 0).
+        #[arg(long)]
+        always: bool,
+        /// Override the model alias from config.
+        #[arg(long)]
+        model: Option<String>,
+        /// Override output language.
+        #[arg(long)]
+        lang: Option<String>,
+        /// Bypass the response cache (force a fresh model request).
+        #[arg(long)]
+        no_cache: bool,
+    },
     /// Interactively configure providers and a default model.
     Setup {
         /// Restore the initial template config (backs up any existing file).

@@ -2,6 +2,7 @@
 pub mod ask;
 pub mod changelog;
 pub mod commit;
+pub mod fix;
 pub mod pr;
 pub mod review;
 
