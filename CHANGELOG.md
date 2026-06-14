@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-06-14
+
+### Added
+
+- `aish run <prompt>` — turns a natural-language description into a single
+  shell command, grounded in the current OS and shell. The command is shown
+  behind a confirm/edit gate (`[Y/n/e(dit)]`) before it runs; `--yes` is the
+  only path to no-prompt execution and `--print` emits the command without
+  running it. Runs via `sh -c` (pipes, globs, and `&&` work) and propagates
+  the command's exit code; aborting or `--print` exits 0. The inverse of
+  `aish fix`. Honors global `--json`/`--verbose` and `--model`/`--lang`/
+  `--no-cache`.
+
 ## [0.8.0] — 2026-06-14
 
 ### Added
