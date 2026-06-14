@@ -134,6 +134,32 @@ pub enum Command {
         #[arg(long)]
         no_cache: bool,
     },
+    /// Turn a natural-language description into a shell command and run it.
+    ///
+    /// The generated command is shown behind a confirm/edit gate before it
+    /// runs; `--yes` is the only path to no-prompt execution, and `--print`
+    /// emits the command without running it.
+    Run {
+        /// Natural-language description of the desired command, e.g.
+        /// `aish run delete all merged git branches`.
+        #[arg(trailing_var_arg = true, required = true)]
+        prompt: Vec<String>,
+        /// Skip the confirm prompt and run the command immediately.
+        #[arg(long, short = 'y')]
+        yes: bool,
+        /// Print the generated command and exit without running it.
+        #[arg(long)]
+        print: bool,
+        /// Override the model alias from config.
+        #[arg(long)]
+        model: Option<String>,
+        /// Override output language.
+        #[arg(long)]
+        lang: Option<String>,
+        /// Bypass the response cache (force a fresh model request).
+        #[arg(long)]
+        no_cache: bool,
+    },
     /// Interactively configure providers and a default model.
     Setup {
         /// Restore the initial template config (backs up any existing file).

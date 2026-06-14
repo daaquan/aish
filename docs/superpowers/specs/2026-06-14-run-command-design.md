@@ -1,7 +1,7 @@
 # `aish run` — natural language to shell command
 
 Date: 2026-06-14
-Status: Proposed
+Status: Accepted
 
 ## Problem
 

@@ -5,6 +5,7 @@ pub mod commit;
 pub mod fix;
 pub mod pr;
 pub mod review;
+pub mod run;
 
 /// Internal tool abstraction. In v0.1 only `CommitTool` implements it; the
 /// registry exists so a future external (subprocess) loader can register tools

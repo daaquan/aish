@@ -109,6 +109,24 @@ scripts and `&&` chains. On success (without `--always`) it is a transparent
 pass-through and makes no model request. Command output is tail-capped at
 12k chars before being sent (the failure usually lives at the end).
 
+## Natural language to a command
+
+`aish run` is the inverse of `fix`: describe what you want, and the model
+emits a single shell command, shown behind a confirm/edit gate before it runs:
+
+```bash
+aish run delete all merged git branches   # show command, then [Y/n/e(dit)]
+aish run --print compress the logs folder # print the command, do not run it
+aish run --yes restart the dev server     # skip the prompt and run immediately
+```
+
+Generating and running an arbitrary shell command has a high blast radius, so
+the command **never executes without an explicit gate**: the confirm prompt is
+the default, `--yes` is the only path to no-prompt execution, and `--print`
+emits the command without running it. The command runs via `sh -c` (so pipes,
+globs, and `&&` work) and `aish run` propagates its exit code; aborting or
+`--print` exits 0.
+
 ### JSON output (CI/CD)
 
 The global `--json` flag makes built-in commands emit machine-readable JSON on
