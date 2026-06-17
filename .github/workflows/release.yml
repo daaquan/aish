@@ -77,11 +77,13 @@ jobs:
         shell: bash
         run: echo "tag=${{ github.event.inputs.tag || github.ref_name }}" >> "$GITHUB_OUTPUT"
 
+      # Forge-agnostic publish: scripts/publish-release.sh picks `gh` or `glab`
+      # from the origin remote, so the same step works when this repo is built on
+      # a GitLab mirror (set AISH_FORGE / GITLAB_TOKEN there).
       - name: Upload to release
         env:
           GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.tag.outputs.tag }}
+          ASSET: ${{ matrix.asset }}
         run: |
-          gh release create "${{ steps.tag.outputs.tag }}" \
-            --title "${{ steps.tag.outputs.tag }}" \
-            --generate-notes --verify-tag 2>/dev/null || true
-          gh release upload "${{ steps.tag.outputs.tag }}" "${{ matrix.asset }}" --clobber
+          ./scripts/publish-release.sh "$TAG" "$ASSET"
