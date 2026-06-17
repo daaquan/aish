@@ -27,7 +27,10 @@ aish commit --apply    # generate and commit without prompting
 
 Plugins are trusted native executables built from source on install. The default
 registry is `git@github.com:daaquan/aish-plugins.git` (override with
-`AISH_REGISTRY`). See the [plugin system design](docs/superpowers/specs/2026-06-05-plugin-system-design.md)
+`AISH_REGISTRY`). GitHub and GitLab registries are both supported: install
+fetches a verified prebuilt binary from the matching forge's Releases and falls
+back to a local `cargo build` when none is published. See the
+[plugin system design](docs/superpowers/specs/2026-06-05-plugin-system-design.md)
 for the stdio ABI.
 
 Plugin install requires a working Rust toolchain for the host target. On Ubuntu,

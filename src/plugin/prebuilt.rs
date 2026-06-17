@@ -8,9 +8,24 @@ use std::process::Command;
 
 pub const HOST_TARGET: &str = env!("AISH_TARGET");
 
-pub fn release_repo(source: &RegistrySource, registry_dir: &Path) -> Option<String> {
+/// Which forge hosts the release assets. GitHub and GitLab expose release
+/// downloads under different URL layouts, so we track the origin to build them.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Forge {
+    GitHub,
+    GitLab,
+}
+
+/// A `owner/name` slug plus the forge it lives on.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Release {
+    pub forge: Forge,
+    pub repo: String,
+}
+
+pub fn release_repo(source: &RegistrySource, registry_dir: &Path) -> Option<Release> {
     match source {
-        RegistrySource::Git { url } => parse_github_repo(url),
+        RegistrySource::Git { url } => parse_repo(url),
         RegistrySource::Local(_) => {
             let out = Command::new("git")
                 .current_dir(registry_dir)
@@ -20,20 +35,30 @@ pub fn release_repo(source: &RegistrySource, registry_dir: &Path) -> Option<Stri
             if !out.status.success() {
                 return None;
             }
-            parse_github_repo(String::from_utf8_lossy(&out.stdout).trim())
+            parse_repo(String::from_utf8_lossy(&out.stdout).trim())
         }
     }
 }
 
 pub async fn fetch_prebuilt(
-    repo: &str,
+    release: &Release,
     name: &str,
     version: &str,
     target: &str,
 ) -> Result<Option<PathBuf>> {
     let asset = format!("{name}-{target}");
-    let base = format!("https://github.com/{repo}/releases/download/{name}-v{version}");
+    let base = release_base_url(release, name, version);
     fetch_prebuilt_from(&base, &asset, "SHA256SUMS").await
+}
+
+/// Build the directory URL that holds a plugin release's assets.
+fn release_base_url(release: &Release, name: &str, version: &str) -> String {
+    let tag = format!("{name}-v{version}");
+    let repo = &release.repo;
+    match release.forge {
+        Forge::GitHub => format!("https://github.com/{repo}/releases/download/{tag}"),
+        Forge::GitLab => format!("https://gitlab.com/{repo}/-/releases/{tag}/downloads"),
+    }
 }
 
 async fn fetch_prebuilt_from(
@@ -96,24 +121,35 @@ async fn fetch_prebuilt_from(
     Ok(Some(path))
 }
 
-fn parse_github_repo(url: &str) -> Option<String> {
+fn parse_repo(url: &str) -> Option<Release> {
     let trimmed = url.trim().trim_end_matches('/');
-    let repo = if let Some(rest) = trimmed.strip_prefix("git@github.com:") {
-        rest
-    } else {
-        trimmed.strip_prefix("https://github.com/")?
-    };
-    let repo = repo
+    let (forge, rest) = [
+        (Forge::GitHub, "git@github.com:", "https://github.com/"),
+        (Forge::GitLab, "git@gitlab.com:", "https://gitlab.com/"),
+    ]
+    .iter()
+    .find_map(|(forge, ssh, https)| {
+        let rest = trimmed
+            .strip_prefix(ssh)
+            .or_else(|| trimmed.strip_prefix(https))?;
+        Some((*forge, rest))
+    })?;
+    let repo = rest
         .trim_end_matches('/')
         .strip_suffix(".git")
-        .unwrap_or(repo);
+        .unwrap_or(rest);
+    // ponytail: single-level owner/name only; add GitLab subgroup nesting if a
+    // registry ever lives under a subgroup.
     let mut parts = repo.split('/');
     let owner = parts.next()?;
     let name = parts.next()?;
     if owner.is_empty() || name.is_empty() || parts.next().is_some() {
         return None;
     }
-    Some(format!("{owner}/{name}"))
+    Some(Release {
+        forge,
+        repo: format!("{owner}/{name}"),
+    })
 }
 
 fn checksum_for_asset(sums: &str, asset: &str) -> Option<String> {
@@ -159,21 +195,59 @@ mod tests {
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
 
+    fn gh(repo: &str) -> Option<Release> {
+        Some(Release {
+            forge: Forge::GitHub,
+            repo: repo.to_string(),
+        })
+    }
+
+    fn gl(repo: &str) -> Option<Release> {
+        Some(Release {
+            forge: Forge::GitLab,
+            repo: repo.to_string(),
+        })
+    }
+
     #[test]
     fn parses_github_repo_urls() {
         assert_eq!(
-            parse_github_repo("git@github.com:daaquan/aish-plugins.git"),
-            Some("daaquan/aish-plugins".to_string())
+            parse_repo("git@github.com:daaquan/aish-plugins.git"),
+            gh("daaquan/aish-plugins")
         );
         assert_eq!(
-            parse_github_repo("https://github.com/daaquan/aish-plugins"),
-            Some("daaquan/aish-plugins".to_string())
+            parse_repo("https://github.com/daaquan/aish-plugins"),
+            gh("daaquan/aish-plugins")
         );
         assert_eq!(
-            parse_github_repo("https://github.com/daaquan/aish-plugins.git"),
-            Some("daaquan/aish-plugins".to_string())
+            parse_repo("https://github.com/daaquan/aish-plugins.git"),
+            gh("daaquan/aish-plugins")
         );
-        assert_eq!(parse_github_repo("https://gitlab.com/x/y"), None);
+    }
+
+    #[test]
+    fn parses_gitlab_repo_urls() {
+        assert_eq!(
+            parse_repo("git@gitlab.com:daaquan/aish-plugins.git"),
+            gl("daaquan/aish-plugins")
+        );
+        assert_eq!(
+            parse_repo("https://gitlab.com/daaquan/aish-plugins"),
+            gl("daaquan/aish-plugins")
+        );
+        assert_eq!(parse_repo("https://example.com/x/y"), None);
+    }
+
+    #[test]
+    fn builds_forge_specific_release_urls() {
+        assert_eq!(
+            release_base_url(&gh("u/r").unwrap(), "demo", "0.1.0"),
+            "https://github.com/u/r/releases/download/demo-v0.1.0"
+        );
+        assert_eq!(
+            release_base_url(&gl("u/r").unwrap(), "demo", "0.1.0"),
+            "https://gitlab.com/u/r/-/releases/demo-v0.1.0/downloads"
+        );
     }
 
     #[tokio::test]

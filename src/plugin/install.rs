@@ -299,9 +299,9 @@ pub async fn install_from_registry(source: &RegistrySource, name: &str) -> Resul
         ));
     }
     let bin = match prebuilt::release_repo(source, &dir) {
-        Some(repo) => {
+        Some(release) => {
             match prebuilt::fetch_prebuilt(
-                &repo,
+                &release,
                 &manifest.name,
                 &manifest.version,
                 prebuilt::HOST_TARGET,
