@@ -1,0 +1,71 @@
+# SPDX-License-Identifier: MIT
+#
+# GitLab CI mirror of the GitHub Actions workflows (.github/workflows/*). Lets the
+# repo build, test, audit, and cut releases when hosted on a GitLab mirror. The
+# release job reuses scripts/publish-release.sh, which detects the GitLab forge
+# from the `origin` remote and publishes via `glab` (set GITLAB_TOKEN as a CI
+# variable; CI_JOB_TOKEN cannot create releases).
+#
+# ponytail: Linux musl only — GitLab.com shared runners have no macOS, so the
+# Darwin targets from release.yml are skipped here. Add a macOS runner if needed.
+
+stages: [test, release]
+
+# Global; only the dind-backed release jobs use these, harmless for test jobs.
+variables:
+  DOCKER_HOST: tcp://docker:2375
+  DOCKER_TLS_CERTDIR: ""
+
+default:
+  image: rust:latest
+
+# Mirror of ci.yml: fmt + clippy + tests.
+build-test:
+  stage: test
+  before_script:
+    - rustup component add clippy rustfmt
+    - git clone --depth 1 --branch v0.2.0 https://gitlab.com/daaquan/aish-plugins.git "$CI_PROJECT_DIR/aish-plugins"
+  script:
+    - cargo fmt --all -- --check
+    - cargo clippy --all-targets -- -D warnings
+    - cargo test --all
+  variables:
+    AISH_PLUGINS_DIR: "$CI_PROJECT_DIR/aish-plugins"
+
+# Mirror of audit.yml: scan Cargo.lock against the RustSec advisory DB.
+audit:
+  stage: test
+  before_script:
+    - cargo install cargo-audit --locked
+  script:
+    - cargo audit --deny warnings
+
+# Mirror of release.yml: build static musl binaries, publish via publish-release.sh.
+# Asset names match the installer's `aish-$(uname -s)-$(uname -m)` scheme.
+.release-template: &release
+  stage: release
+  rules:
+    - if: $CI_COMMIT_TAG =~ /^v/
+  # cross builds in a Docker container, so the runner needs docker-in-docker.
+  services:
+    - docker:dind
+  before_script:
+    - rustup target add "$TARGET"
+    - cargo install cross --locked
+  script:
+    - cross build --release --locked --target "$TARGET"
+    - cp "target/$TARGET/release/aish" "$ASSET"
+    - chmod +x "$ASSET"
+    - ./scripts/publish-release.sh "$CI_COMMIT_TAG" "$ASSET"
+
+release-linux-x86_64:
+  <<: *release
+  variables:
+    TARGET: x86_64-unknown-linux-musl
+    ASSET: aish-Linux-x86_64
+
+release-linux-aarch64:
+  <<: *release
+  variables:
+    TARGET: aarch64-unknown-linux-musl
+    ASSET: aish-Linux-aarch64
