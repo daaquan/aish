@@ -2,9 +2,12 @@
 pub mod audit;
 pub mod cache;
 pub mod cli;
+pub mod commands;
 pub mod config;
 pub mod editor;
 pub mod git;
-pub mod plugin;
 pub mod provider;
+pub mod tool;
+pub mod uninstall;
+pub mod update;
 pub mod usage;

@@ -69,6 +69,71 @@ pub fn staged_diff(dir: &Path) -> Result<String, GitError> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+/// Name of the repository's default branch.
+/// Prefers `origin/HEAD` when a remote is configured; falls back to a local
+/// `main` or `master` branch.
+pub fn default_branch(dir: &Path) -> Result<String, GitError> {
+    let head = run(
+        dir,
+        &["symbolic-ref", "--short", "refs/remotes/origin/HEAD"],
+    )?;
+    if head.status.success() {
+        let name = String::from_utf8_lossy(&head.stdout).trim().to_string();
+        if let Some(short) = name.strip_prefix("origin/") {
+            return Ok(short.to_string());
+        }
+    }
+    for candidate in ["main", "master"] {
+        let exists = run(dir, &["rev-parse", "--verify", "-q", candidate])?;
+        if exists.status.success() {
+            return Ok(candidate.to_string());
+        }
+    }
+    Err(GitError::Failed {
+        command: "symbolic-ref".into(),
+        code: "1".into(),
+        detail: "cannot determine the default branch (no origin/HEAD, main, or master)".into(),
+    })
+}
+
+/// Short name of the currently checked-out branch (`git rev-parse --abbrev-ref HEAD`).
+pub fn current_branch(dir: &Path) -> Result<String, GitError> {
+    let out = run_checked(dir, &["rev-parse", "--abbrev-ref", "HEAD"])?;
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Diff between the merge-base of `base` and HEAD (`git diff base...HEAD`).
+pub fn branch_diff(dir: &Path, base: &str) -> Result<String, GitError> {
+    let range = format!("{base}...HEAD");
+    let out = run_checked(dir, &["diff", &range])?;
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// One-line subjects of commits on HEAD that are not on `base` (`git log base..HEAD`).
+pub fn branch_log(dir: &Path, base: &str) -> Result<String, GitError> {
+    let range = format!("{base}..HEAD");
+    let out = run_checked(dir, &["log", "--format=%s", &range])?;
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// Most recent tag reachable from HEAD (`git describe --tags --abbrev=0`),
+/// or None when the repository has no tags.
+pub fn latest_tag(dir: &Path) -> Result<Option<String>, GitError> {
+    let out = run(dir, &["describe", "--tags", "--abbrev=0"])?;
+    if !out.status.success() {
+        return Ok(None);
+    }
+    let tag = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    Ok((!tag.is_empty()).then_some(tag))
+}
+
+/// One-line subjects of commits in `from..to`.
+pub fn log_range(dir: &Path, from: &str, to: &str) -> Result<String, GitError> {
+    let range = format!("{from}..{to}");
+    let out = run_checked(dir, &["log", "--format=%s", &range])?;
+    Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
 /// Create a commit with the given message.
 /// Pass `signoff: true` to append a DCO `Signed-off-by` trailer (`git commit -s`).
 pub fn commit(dir: &Path, message: &str, signoff: bool) -> Result<(), GitError> {
@@ -179,6 +244,149 @@ mod tests {
             }
             other => panic!("expected GitError::Failed, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn default_branch_falls_back_to_local_main() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("a.txt"), "x").unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["add", "a.txt"])
+            .status()
+            .unwrap();
+        commit(dir.path(), "init", false).unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["branch", "-M", "main"])
+            .status()
+            .unwrap();
+        assert_eq!(default_branch(dir.path()).unwrap(), "main");
+    }
+
+    #[test]
+    fn default_branch_falls_back_to_local_master() {
+        let dir = init_repo();
+        std::fs::write(dir.path().join("a.txt"), "x").unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["add", "a.txt"])
+            .status()
+            .unwrap();
+        commit(dir.path(), "init", false).unwrap();
+        Command::new("git")
+            .current_dir(dir.path())
+            .args(["branch", "-M", "master"])
+            .status()
+            .unwrap();
+        assert_eq!(default_branch(dir.path()).unwrap(), "master");
+    }
+
+    #[test]
+    fn branch_diff_and_log_cover_commits_ahead_of_base() {
+        let dir = init_repo();
+        let p = dir.path();
+        std::fs::write(p.join("a.txt"), "x").unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["add", "a.txt"])
+            .status()
+            .unwrap();
+        commit(p, "init", false).unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["branch", "-M", "main"])
+            .status()
+            .unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["checkout", "-q", "-b", "feature"])
+            .status()
+            .unwrap();
+        std::fs::write(p.join("b.txt"), "new file").unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["add", "b.txt"])
+            .status()
+            .unwrap();
+        commit(p, "feat: add b", false).unwrap();
+
+        assert_eq!(current_branch(p).unwrap(), "feature");
+        let diff = branch_diff(p, "main").unwrap();
+        assert!(diff.contains("b.txt"));
+        assert!(diff.contains("new file"));
+        let log = branch_log(p, "main").unwrap();
+        assert!(log.contains("feat: add b"));
+        assert!(!log.contains("init"));
+    }
+
+    #[test]
+    fn branch_diff_empty_when_no_commits_ahead() {
+        let dir = init_repo();
+        let p = dir.path();
+        std::fs::write(p.join("a.txt"), "x").unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["add", "a.txt"])
+            .status()
+            .unwrap();
+        commit(p, "init", false).unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["branch", "-M", "main"])
+            .status()
+            .unwrap();
+        assert!(branch_log(p, "main").unwrap().trim().is_empty());
+        assert!(branch_diff(p, "main").unwrap().trim().is_empty());
+    }
+
+    #[test]
+    fn latest_tag_none_without_tags_then_some_after_tagging() {
+        let dir = init_repo();
+        let p = dir.path();
+        std::fs::write(p.join("a.txt"), "x").unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["add", "a.txt"])
+            .status()
+            .unwrap();
+        commit(p, "init", false).unwrap();
+        assert_eq!(latest_tag(p).unwrap(), None);
+        Command::new("git")
+            .current_dir(p)
+            .args(["tag", "v0.1.0"])
+            .status()
+            .unwrap();
+        assert_eq!(latest_tag(p).unwrap().as_deref(), Some("v0.1.0"));
+    }
+
+    #[test]
+    fn log_range_lists_subjects_between_refs() {
+        let dir = init_repo();
+        let p = dir.path();
+        std::fs::write(p.join("a.txt"), "x").unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["add", "a.txt"])
+            .status()
+            .unwrap();
+        commit(p, "init", false).unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["tag", "v0.1.0"])
+            .status()
+            .unwrap();
+        std::fs::write(p.join("b.txt"), "y").unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["add", "b.txt"])
+            .status()
+            .unwrap();
+        commit(p, "feat: add b", false).unwrap();
+
+        let log = log_range(p, "v0.1.0", "HEAD").unwrap();
+        assert!(log.contains("feat: add b"));
+        assert!(!log.contains("init"));
     }
 
     #[test]

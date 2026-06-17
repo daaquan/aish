@@ -9,6 +9,132 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-06-14
+
+### Added
+
+- `aish run <prompt>` — turns a natural-language description into a single
+  shell command, grounded in the current OS and shell. The command is shown
+  behind a confirm/edit gate (`[Y/n/e(dit)]`) before it runs; `--yes` is the
+  only path to no-prompt execution and `--print` emits the command without
+  running it. Runs via `sh -c` (pipes, globs, and `&&` work) and propagates
+  the command's exit code; aborting or `--print` exits 0. The inverse of
+  `aish fix`. Honors global `--json`/`--verbose` and `--model`/`--lang`/
+  `--no-cache`.
+
+## [0.8.0] — 2026-06-14
+
+### Added
+
+- `aish fix <cmd>` — runs a command, streams its combined output through, and
+  on a nonzero exit appends a model-generated diagnosis plus a suggested fix.
+  Always propagates the wrapped command's exit code (safe in scripts and `&&`
+  chains); success without `--always` is a transparent pass-through with no
+  model call. `--shell` runs the command via `sh -c` for pipes and redirects;
+  `--always` diagnoses even on success. Command output is tail-capped at 12k
+  chars (failures live at the end). Diagnoses and suggests only — it never
+  edits files or re-runs the command.
+
+## [0.7.1] — 2026-06-13
+
+### Changed
+
+- On first-run config auto-generation, aish now prints a one-line notice
+  pointing at `aish setup` (the template ships without API keys, so commands
+  fail until one is configured).
+
+## [0.7.0] — 2026-06-13
+
+### Added
+
+- `aish setup` — interactive configuration wizard. Prompts to enable each
+  provider, choose how its API key is stored (plaintext in the config or a
+  `${ENV_VAR}` reference, per key), pick a model, and select a default alias,
+  then writes `~/.aish/config.yaml` (mode `0600`, backing up any existing file).
+- `aish setup --repair` — restore the template config, backing up the current
+  file to `<path>.bak`.
+- A config is now created automatically on first run when none exists.
+- New provider examples in the config template: `openrouter`, `deepseek`,
+  and `groq` (all OpenAI-compatible).
+
+### Changed
+
+- Corrected the `kilo` provider endpoint to `https://api.kilo.ai/api/gateway`.
+
+### Removed
+
+- `aish config init` — superseded by `aish setup` and first-run auto-generation.
+
+## [0.6.0] — 2026-06-11
+
+### Added
+
+- `aish pr` — generate a PR title/body from the branch diff against the
+  default branch and create the PR via `gh pr create` (#21). Confirm/edit
+  loop like `commit`; `--apply` skips the prompt, `--base` overrides
+  default-branch auto-detection (origin/HEAD → main/master).
+- `aish review` — model review of the staged diff, or the branch diff with
+  `--branch`/`--base` (#22). Findings grouped by severity
+  (CRITICAL/HIGH/MEDIUM/LOW); `--json` for CI consumption.
+- `aish changelog` — Keep-a-Changelog style entries from commits in
+  latest-tag..HEAD, overridable with `--from`/`--to` (#23).
+- `aish cache stats` / `aish cache clear` — inspect or empty the response
+  cache; `clear` confirms first (`-y`/`--yes` skips) (#24).
+- `aish completions <shell>` — completion scripts for bash, zsh, fish,
+  elvish, and powershell via clap_complete (#25).
+- `aish config check --ping` — after static validation, send one minimal
+  request per configured provider to verify reachability and credentials;
+  nonzero exit on any failure (CI gate) (#26).
+- `aish ask "<question>"` — one-shot questions with piped stdin as context
+  (capped at 12k chars), cached like other commands (#27).
+
+### Changed
+
+- All generating commands now share one cache + provider pipeline
+  (`commands::generate`); the cache stores the raw model reply.
+
+### Fixed
+
+- Stale `AGPL-3.0-only` SPDX marker in `cache.rs` corrected to MIT.
+- E2E flake: `uninstall` tests no longer hit ETXTBSY under parallel test
+  runs (test binary is now copied via spawned `cp`) (#28).
+
+## [0.5.0] — 2026-06-11
+
+### Added
+
+- `aish update` — self-update from GitHub releases (#19). Compares the
+  running version against the latest release tag, downloads the matching
+  `aish-<OS>-<arch>` asset, and atomically replaces the binary. Supports
+  `--check` (report only; nonzero exit when outdated, usable as a CI gate),
+  `--version <tag>` to pin a release, and the global `--json` flag.
+  Refuses to touch binaries installed via `cargo install`.
+- `aish uninstall` — remove the installed binary (#20). Prompts for
+  confirmation (default no); `--yes` skips the prompt, `--purge` also
+  deletes the data dir (`$AISH_HOME`, default `~/.aish`) after path-safety
+  validation. Without `--purge` the data dir is kept and its size reported.
+
+## [0.4.0] — 2026-06-11
+
+### Changed
+
+- **Breaking:** removed the subprocess plugin system introduced in 0.2.0.
+  `commit` is a built-in subcommand again — no `aish plugin install` step.
+  Rationale (formerly ADR-0001): the complexity of the
+  stdio ABI, installer, and two-repo sync was not justified by a single
+  plugin, and the install step hurt UX. The `aish plugin` command group is
+  gone; `[plugins.<name>]` config tables are ignored (top-level `commit:` is
+  canonical again); the `daaquan/aish-plugins` repo is archived.
+- The interactive commit prompt now re-asks after an edit
+  (`[Y/n/e(dit)]` → edit → shows the edited message → confirm), instead of
+  committing the edited text immediately.
+
+### Removed
+
+- `aish plugin install/update/list/enable/disable/uninstall`.
+- The stdio plugin host, JSONL protocol, manifest registry, prebuilt-binary
+  fetcher, and the `toml`, `sha2`, `fs2` dependencies.
+
 ## [0.3.1] — 2026-06-07
 
 ### Fixed
@@ -84,7 +210,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` install script and project governance foundation
   (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, design specs).
 
-[Unreleased]: https://github.com/daaquan/aish/compare/v0.2.1...HEAD
+[Unreleased]: https://github.com/daaquan/aish/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/daaquan/aish/compare/v0.7.1...v0.8.0
+[0.7.1]: https://github.com/daaquan/aish/compare/v0.7.0...v0.7.1
+[0.7.0]: https://github.com/daaquan/aish/compare/v0.6.0...v0.7.0
+[0.6.0]: https://github.com/daaquan/aish/compare/v0.5.0...v0.6.0
+[0.5.0]: https://github.com/daaquan/aish/compare/v0.4.0...v0.5.0
+[0.4.0]: https://github.com/daaquan/aish/compare/v0.3.1...v0.4.0
+[0.3.1]: https://github.com/daaquan/aish/compare/v0.3.0...v0.3.1
+[0.3.0]: https://github.com/daaquan/aish/compare/v0.2.1...v0.3.0
 [0.2.1]: https://github.com/daaquan/aish/compare/v0.2.0...v0.2.1
 [0.2.0]: https://github.com/daaquan/aish/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/daaquan/aish/releases/tag/v0.1.0

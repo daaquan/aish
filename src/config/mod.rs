@@ -7,7 +7,7 @@ use thiserror::Error;
 
 #[derive(Debug, Error)]
 pub enum ConfigError {
-    #[error("config file not found at {0} — run `aish config init`")]
+    #[error("config file not found at {0} — run `aish setup`")]
     NotFound(PathBuf),
     #[error("invalid config: {0}")]
     Parse(String),
@@ -61,14 +61,9 @@ fn default_model() -> String {
 pub struct Config {
     pub providers: BTreeMap<String, ProviderConfig>,
     pub models: BTreeMap<String, ModelAlias>,
-    /// Deprecated: per-plugin config now lives under `[plugins.commit]`. Kept as
-    /// a back-compat alias that still feeds the commit plugin (see `scoped_config`).
+    /// Settings for the built-in `aish commit` command.
     #[serde(default = "default_commit")]
     pub commit: CommitConfig,
-    /// Free-form per-plugin config tables, keyed by plugin name. Forwarded to the
-    /// matching plugin (and only that plugin) in the `invoke` frame.
-    #[serde(default)]
-    pub plugins: BTreeMap<String, serde_yaml::Value>,
     /// Optional model pricing for `aish usage` cost estimates. Keyed by model string.
     #[serde(default)]
     pub pricing: BTreeMap<String, ModelPricing>,
@@ -95,7 +90,23 @@ impl Config {
     pub fn load() -> Result<Self, ConfigError> {
         let path = Self::default_path();
         if !path.exists() {
-            return Err(ConfigError::NotFound(path));
+            // First run with the default path: lay down the template so the
+            // tool works out of the box. A custom $AISH_CONFIG pointed at a
+            // missing file is the user naming a specific file — don't create a
+            // different one for them; surface NotFound instead.
+            if std::env::var_os("AISH_CONFIG").is_none()
+                && Self::write_template(&path, false).is_ok()
+            {
+                // Point first-run users at the wizard; the template ships with
+                // Anthropic + Ollama but no API keys, so commands fail until one
+                // is configured. To stderr so `--json` stdout stays clean.
+                eprintln!(
+                    "Created a default config at {} — run `aish setup` to add provider API keys.",
+                    path.display()
+                );
+            } else {
+                return Err(ConfigError::NotFound(path));
+            }
         }
         let raw = std::fs::read_to_string(&path)
             .map_err(|e| ConfigError::Io(path.clone(), e.to_string()))?;
@@ -182,16 +193,6 @@ impl Config {
                 });
             }
         }
-        // A per-plugin config that isn't a table can't be forwarded as one; it
-        // is silently ignored at runtime, so flag the likely mistake here.
-        for (name, value) in &self.plugins {
-            if !value.is_mapping() {
-                issues.push(Issue {
-                    level: IssueLevel::Warning,
-                    message: format!("plugin config `plugins.{name}` is not a table; ignored"),
-                });
-            }
-        }
         // A pricing entry that matches no alias's model string is dead config:
         // `aish usage` can never apply it. Likely a typo or stale model name.
         if !self.pricing.is_empty() {
@@ -211,39 +212,35 @@ impl Config {
         issues
     }
 
-    /// Commented YAML template for `aish config init`.
+    /// Commented YAML template written on first run and by `aish setup --repair`.
     pub fn template() -> &'static str {
         r#"# aish configuration (~/.aish/config.yaml)
 #
 # Only providers you leave uncommented are loaded. The default template keeps
 # Anthropic and local Ollama available, while other example providers are
 # commented so unset optional API keys never block config loading.
+#
+# Any provider other than `anthropic` and `google` is treated as
+# OpenAI-compatible: set `base_url` to its endpoint and `api_key` to its key.
 providers:
   anthropic: { api_key: ${ANTHROPIC_API_KEY} }
   ollama:    { base_url: http://localhost:11434/v1 }
-  # openai: { api_key: ${OPENAI_API_KEY} }
-  # google: { api_key: ${GOOGLE_API_KEY} }
-  # kilo:   { api_key: ${KILO_API_KEY}, base_url: https://gateway.kilo.example/v1 }
+  # openai:     { api_key: ${OPENAI_API_KEY} }
+  # google:     { api_key: ${GOOGLE_API_KEY} }
+  # openrouter: { api_key: ${OPENROUTER_API_KEY}, base_url: https://openrouter.ai/api/v1 }
+  # deepseek:   { api_key: ${DEEPSEEK_API_KEY},   base_url: https://api.deepseek.com/v1 }
+  # groq:       { api_key: ${GROQ_API_KEY},       base_url: https://api.groq.com/openai/v1 }
+  # kilo:       { api_key: ${KILO_API_KEY},       base_url: https://api.kilo.ai/api/gateway }
 
 models:
   default: { provider: anthropic, model: claude-opus-4-8 }
   local:   { provider: ollama,    model: qwen3-coder }
   # fast:   { provider: openai,   model: gpt-5-mini }
 
-# Per-plugin config. Each `[plugins.<name>]` table is forwarded only to the
-# plugin of that name — no plugin sees another's settings or any provider key.
-plugins:
-  commit:
-    style: conventional
-    language: en
-    model: default
-
-# Deprecated: the top-level `commit:` block below still works (it back-fills the
-# commit plugin) but `[plugins.commit]` above is the canonical location now.
-# commit:
-#   style: conventional
-#   language: en
-#   model: default
+commit:
+  style: conventional
+  language: en
+  model: default
 
 # Optional. Prices in USD per 1,000,000 tokens, keyed by model string.
 # `aish usage` uses these to estimate cost; models without an entry show tokens only.
@@ -264,11 +261,23 @@ plugins:
                 ),
             ));
         }
-        if let Some(parent) = path.parent() {
-            std::fs::create_dir_all(parent)?;
-        }
-        std::fs::write(path, Self::template())
+        write_secure(path, Self::template())
     }
+}
+
+/// Write `contents` to `path` (creating parent dirs), restricting it to the
+/// owner (`0600`) on unix since the file may hold plaintext API keys.
+pub fn write_secure(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    std::fs::write(path, contents)?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+    }
+    Ok(())
 }
 
 /// Expand `${VAR}` occurrences. Missing variable → empty string (validated later when the
@@ -395,18 +404,6 @@ commit: { style: conventional, language: en, model: default }
         )
         .unwrap();
         assert!(cfg.validate().is_empty());
-    }
-
-    #[test]
-    fn validate_warns_on_non_table_plugin_config() {
-        let cfg = Config::from_yaml(
-            "providers:\n  openai: { api_key: sk-x }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }\nplugins:\n  commit: \"oops\"\n",
-        )
-        .unwrap();
-        let issues = cfg.validate();
-        assert!(issues.iter().any(|i| i.level == IssueLevel::Warning
-            && i.message.contains("commit")
-            && i.message.contains("table")));
     }
 
     #[test]
