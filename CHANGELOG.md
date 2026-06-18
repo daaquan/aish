@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Forge-aware release publishing: `scripts/publish-release.sh` creates a
+  release and uploads assets to whichever forge `origin` points at — GitHub
+  via `gh`, GitLab via `glab` — so a tag can be cut from GitHub Actions or
+  GitLab CI through one entrypoint. Set `AISH_FORGE=github|gitlab` to override
+  detection (e.g. self-hosted GitLab).
+- `.gitlab-ci.yml` mirroring the GitHub CI/release workflows, so the project
+  builds, tests, and publishes releases from GitLab as well.
+
 ## [0.9.0] — 2026-06-14
 
 ### Added

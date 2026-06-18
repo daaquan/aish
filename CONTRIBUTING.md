@@ -30,13 +30,14 @@ required — a plain `git commit` is fine.
    Examples:
    - `feat: add interactive REPL loop`
    - `fix: escape backticks in command parser`
-   - `docs: document plugin API`
+   - `docs: document the run subcommand`
 
 3. **If you open a PR** against `main`, the description should:
    - Summarize the change set (`git diff main...HEAD` shows it all).
    - Explain the motivation.
    - Include a **test plan** (how you verified it; mark TODOs if any).
-4. **Merge.** A PR merges once it has **green CI** (once CI workflows exist).
+4. **Merge.** A PR merges once it has **green CI** (the `ci` workflow runs
+   `cargo fmt --check`, `cargo clippy -D warnings`, and `cargo test --all`).
    Squash, merge, and rebase merges are all allowed — pick whatever keeps history clean.
    No approving review is required.
 
@@ -59,15 +60,18 @@ gh api -X PUT repos/{owner}/{repo}/branches/main/protection --input - <<'JSON'
 JSON
 ```
 
-`required_status_checks` is `null` until CI exists; once CI workflows are added, set it to
-`{ "strict": true, "contexts": ["<job-name>"] }` to require green CI before merge.
+To require green CI before merge, set `required_status_checks` to
+`{ "strict": true, "contexts": ["build-test"] }` (the `ci` workflow's job).
+It is left `null` above so admins can still merge if CI is unavailable.
 
 ## Development setup
 
-_TBD — no build system exists yet. Build, lint, and test commands will be documented here
-once application code lands. Do not assume commands that are not listed._
+A standard Rust toolchain (stable) is all you need.
 
-- Build: TBD
-- Test: TBD
-- Lint: TBD
-- Run a single test: TBD
+- Build: `cargo build`
+- Test: `cargo test --all`
+- Lint: `cargo clippy --all-targets -- -D warnings && cargo fmt --all -- --check`
+- Run a single test: `cargo test <name> -- --test-threads=1`
+
+The test suite runs offline: set `AISH_PROVIDER=mock` to return a canned reply
+(`$AISH_MOCK_REPLY`) without calling any provider.
