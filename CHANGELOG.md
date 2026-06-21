@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-06-22
+
 ### Added
 
 - Forge-aware release publishing: `scripts/publish-release.sh` creates a
@@ -18,6 +20,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   detection (e.g. self-hosted GitLab).
 - `.gitlab-ci.yml` mirroring the GitHub CI/release workflows, so the project
   builds, tests, and publishes releases from GitLab as well.
+- GitLab release downloads in the install path, alongside GitHub.
+
+### Fixed
+
+- Provider errors now surface the upstream 400 response body as a
+  `BadRequest`, instead of a generic failure, and UTF-8 truncation of long
+  error bodies no longer panics on multi-byte boundaries.
 
 ## [0.9.0] — 2026-06-14
 
