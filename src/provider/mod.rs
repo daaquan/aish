@@ -67,6 +67,8 @@ pub enum ProviderError {
     RateLimited,
     #[error("model `{0}` was rejected by the provider")]
     BadModel(String),
+    #[error("provider returned an error: {0}")]
+    BadRequest(String),
     #[error("provider request failed: {0}")]
     Request(String),
     #[error("could not parse provider response: {0}")]
