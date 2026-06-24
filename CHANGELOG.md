@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.11.0] — 2026-06-25
+
+### Added
+
+- `aish commit --edit` opens your `$EDITOR` pre-filled with the generated
+  message and git's standard commit template (`git commit -e`); saving commits,
+  emptying the message aborts. The default `[Y/n/e]` prompt and `--apply`
+  direct-commit are unchanged.
+
 ## [0.10.0] — 2026-06-22
 
 ### Added
