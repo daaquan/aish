@@ -10,6 +10,7 @@ use std::io::Write;
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     apply: bool,
+    edit: bool,
     model: Option<String>,
     style: Option<String>,
     lang: Option<String>,
@@ -66,6 +67,16 @@ pub async fn run(
         // JSON mode is non-interactive: emit the suggestion without committing.
         // CI that wants to commit passes `--apply --json`.
         "suggested"
+    } else if edit {
+        // Open git's editor pre-filled with the message; save commits, an
+        // emptied message aborts (git handles both).
+        if git::commit_with_editor(&cwd, &message, signoff)? {
+            println!("Committed.");
+            "edited"
+        } else {
+            println!("Aborted.");
+            "rejected"
+        }
     } else {
         confirm_loop(&cwd, message.clone(), signoff)?
     };

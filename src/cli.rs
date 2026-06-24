@@ -25,6 +25,10 @@ pub enum Command {
         /// Commit immediately without confirmation.
         #[arg(long)]
         apply: bool,
+        /// Open the editor pre-filled with the message (git commit -e); save to
+        /// commit, leave empty to abort. Skips the interactive prompt.
+        #[arg(long)]
+        edit: bool,
         /// Override the model alias from config.
         #[arg(long)]
         model: Option<String>,

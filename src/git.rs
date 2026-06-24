@@ -145,6 +145,32 @@ pub fn commit(dir: &Path, message: &str, signoff: bool) -> Result<(), GitError> 
     Ok(())
 }
 
+/// Commit by opening git's editor (`git commit -e`) seeded with `message` and
+/// the standard commit template: saving commits, an emptied message aborts.
+/// Inherits our stdio so the editor is interactive (unlike [`commit`], which
+/// captures output), and treats git's "aborting commit due to empty message"
+/// exit as a clean cancellation rather than an error.
+pub fn commit_with_editor(dir: &Path, message: &str, signoff: bool) -> Result<bool, GitError> {
+    let mut args = vec!["commit", "-e", "-m", message];
+    if signoff {
+        args.push("-s");
+    }
+    let status = Command::new("git")
+        .current_dir(dir)
+        .args(&args)
+        .status()
+        .map_err(|e| {
+            if e.kind() == std::io::ErrorKind::NotFound {
+                GitError::NotInstalled
+            } else {
+                GitError::Spawn(e.to_string())
+            }
+        })?;
+    // git exits non-zero when the commit is aborted (e.g. emptied message);
+    // that's a user cancellation, not a failure.
+    Ok(status.success())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -205,6 +231,47 @@ mod tests {
             .output()
             .unwrap();
         assert!(String::from_utf8_lossy(&log.stdout).contains("feat: add a"));
+    }
+
+    fn stage_a(dir: &Path) {
+        std::fs::write(dir.join("a.txt"), "hello").unwrap();
+        Command::new("git")
+            .current_dir(dir)
+            .args(["add", "a.txt"])
+            .status()
+            .unwrap();
+    }
+
+    // GIT_EDITOR is process-global, so drive both branches in one test.
+    #[test]
+    fn commit_with_editor_commits_on_save_and_aborts_on_empty() {
+        // Editor keeps the seeded message -> commit succeeds.
+        let dir = init_repo();
+        stage_a(dir.path());
+        std::env::set_var("GIT_EDITOR", "true");
+        let committed = commit_with_editor(dir.path(), "feat: via editor", false).unwrap();
+        std::env::remove_var("GIT_EDITOR");
+        assert!(committed);
+        let log = Command::new("git")
+            .current_dir(dir.path())
+            .args(["log", "--oneline"])
+            .output()
+            .unwrap();
+        assert!(String::from_utf8_lossy(&log.stdout).contains("feat: via editor"));
+
+        // Editor empties the message -> git aborts, we report cancellation.
+        let dir2 = init_repo();
+        stage_a(dir2.path());
+        std::env::set_var("GIT_EDITOR", "truncate -s 0");
+        let aborted = commit_with_editor(dir2.path(), "feat: discard me", false).unwrap();
+        std::env::remove_var("GIT_EDITOR");
+        assert!(!aborted);
+        let log2 = Command::new("git")
+            .current_dir(dir2.path())
+            .args(["log", "--oneline"])
+            .output()
+            .unwrap();
+        assert!(String::from_utf8_lossy(&log2.stdout).trim().is_empty());
     }
 
     #[test]

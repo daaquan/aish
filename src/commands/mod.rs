@@ -48,12 +48,13 @@ pub async fn run(cli: Cli) -> Result<()> {
         },
         Command::Commit {
             apply,
+            edit,
             model,
             style,
             lang,
             signoff,
             no_cache,
-        } => commit::run(apply, model, style, lang, signoff, no_cache, json).await,
+        } => commit::run(apply, edit, model, style, lang, signoff, no_cache, json).await,
         Command::Pr {
             apply,
             model,
