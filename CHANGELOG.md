@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.12.0] — 2026-06-26
+
+### Added
+
+- Configurable commit style: an optional free-form `commit.instructions`
+  field in `~/.aish/config.yaml` is appended to the commit-message prompt as
+  extra style guidance (gitmoji prefixes, longer subjects, a mandatory body,
+  …). The output-format guardrails stay fixed, so the generated message is
+  still clean and `--json`/postprocessing keep working. Unset = previous
+  behavior unchanged.
+
 ## [0.11.0] — 2026-06-25
 
 ### Added
