@@ -67,8 +67,17 @@ pub(crate) fn truncate_tail(s: &str, marker: &str) -> String {
 }
 
 /// Build the system+user messages for commit-message generation.
-pub fn build_messages(style: &str, language: &str, diff: &str) -> Vec<Message> {
-    let system = format!(
+///
+/// `instructions`, when non-empty, is appended as extra style guidance. The
+/// output-format guardrails (output-only, no fences) stay fixed regardless, so
+/// [`postprocess`] keeps working.
+pub fn build_messages(
+    style: &str,
+    language: &str,
+    instructions: Option<&str>,
+    diff: &str,
+) -> Vec<Message> {
+    let mut system = format!(
         "You write git commit messages.\n\
          Style: {style} (when 'conventional', use Conventional Commits: \
          `type(scope): subject`, types feat|fix|refactor|docs|test|chore|perf|ci).\n\
@@ -76,6 +85,10 @@ pub fn build_messages(style: &str, language: &str, diff: &str) -> Vec<Message> {
          Output ONLY the commit message. Subject <= 50 chars, imperative mood. \
          No backticks, no explanation, no surrounding quotes."
     );
+    if let Some(extra) = instructions.map(str::trim).filter(|s| !s.is_empty()) {
+        system.push_str("\nAdditional style guidance:\n");
+        system.push_str(extra);
+    }
     let diff = truncate_diff(diff);
     let user = format!("Generate a commit message for this staged diff:\n\n{diff}");
     vec![Message::system(system), Message::user(user)]
@@ -106,11 +119,26 @@ mod tests {
 
     #[test]
     fn prompt_includes_style_language_and_diff() {
-        let msgs = build_messages("conventional", "en", "diff --git a/x");
+        let msgs = build_messages("conventional", "en", None, "diff --git a/x");
         assert!(matches!(msgs[0].role, crate::provider::Role::System));
         assert!(msgs[0].content.to_lowercase().contains("conventional"));
         assert!(msgs[0].content.contains("en"));
         assert!(msgs[1].content.contains("diff --git a/x"));
+    }
+
+    #[test]
+    fn appends_custom_instructions_to_system_prompt() {
+        let msgs = build_messages("conventional", "en", Some("Use a gitmoji prefix."), "diff");
+        assert!(msgs[0].content.contains("Use a gitmoji prefix."));
+        // Guardrails stay regardless of custom guidance.
+        assert!(msgs[0].content.contains("Output ONLY the commit message"));
+    }
+
+    #[test]
+    fn blank_instructions_add_nothing() {
+        let plain = build_messages("conventional", "en", None, "diff");
+        let blank = build_messages("conventional", "en", Some("   \n "), "diff");
+        assert_eq!(plain[0].content, blank[0].content);
     }
 
     #[test]
@@ -140,7 +168,7 @@ mod tests {
     #[test]
     fn caps_huge_diff() {
         let big = "x".repeat(MAX_DIFF_CHARS + 500);
-        let msgs = build_messages("conventional", "en", &big);
+        let msgs = build_messages("conventional", "en", None, &big);
         assert!(msgs[1].content.contains("[diff truncated]"));
         // short prompt prefix + capped diff (<= MAX_DIFF_CHARS) + marker
         assert!(msgs[1].content.len() < MAX_DIFF_CHARS + 200);
@@ -172,7 +200,7 @@ mod tests {
         // 'あ' is 3 bytes; a diff of these straddles MAX_DIFF_CHARS mid-character.
         // Must cap on a char boundary, not panic.
         let big = "あ".repeat(MAX_DIFF_CHARS);
-        let msgs = build_messages("conventional", "en", &big);
+        let msgs = build_messages("conventional", "en", None, &big);
         assert!(msgs[1].content.contains("[diff truncated]"));
     }
 }

@@ -45,6 +45,11 @@ pub struct CommitConfig {
     pub language: String,
     #[serde(default = "default_model")]
     pub model: String,
+    /// Extra free-form guidance appended to the commit-message prompt. Use it to
+    /// shape style (gitmoji, longer subjects, mandatory body, …) without touching
+    /// the output-format guardrails the tool relies on. `None` = no extra rules.
+    #[serde(default)]
+    pub instructions: Option<String>,
 }
 
 fn default_style() -> String {
@@ -74,6 +79,7 @@ fn default_commit() -> CommitConfig {
         style: default_style(),
         language: default_language(),
         model: default_model(),
+        instructions: None,
     }
 }
 
@@ -241,6 +247,10 @@ commit:
   style: conventional
   language: en
   model: default
+  # Optional extra style guidance appended to the prompt. Free-form, multi-line.
+  # instructions: |
+  #   Prefix the subject with a gitmoji.
+  #   Always add a one-line body explaining why.
 
 # Optional. Prices in USD per 1,000,000 tokens, keyed by model string.
 # `aish usage` uses these to estimate cost; models without an entry show tokens only.

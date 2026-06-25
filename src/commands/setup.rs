@@ -193,6 +193,7 @@ pub fn build_config(providers: &[EnabledProvider], default_alias: &str) -> Confi
             style: "conventional".to_string(),
             language: "en".to_string(),
             model: "default".to_string(),
+            instructions: None,
         },
         pricing: BTreeMap::new(),
     }

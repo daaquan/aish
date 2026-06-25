@@ -40,7 +40,7 @@ pub async fn run(
 
     let style = style.unwrap_or_else(|| cfg.commit.style.clone());
     let lang = lang.unwrap_or_else(|| cfg.commit.language.clone());
-    let messages = build_messages(&style, &lang, &diff);
+    let messages = build_messages(&style, &lang, cfg.commit.instructions.as_deref(), &diff);
 
     let generated =
         crate::commands::generate::generate(&resolved, messages, no_cache, json).await?;
