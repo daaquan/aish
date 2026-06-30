@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-use clap::{Parser, Subcommand};
+use clap::{Args, Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(
@@ -11,11 +11,25 @@ pub struct Cli {
     #[command(subcommand)]
     pub command: Command,
     /// Print detailed error context.
-    #[arg(long, global = true)]
+    #[arg(long, short = 'v', global = true)]
     pub verbose: bool,
     /// Emit machine-readable JSON instead of human text (for CI/CD).
     #[arg(long, global = true)]
     pub json: bool,
+}
+
+/// Options shared by every model-backed command (commit, pr, review, …).
+#[derive(Args)]
+pub struct ModelOpts {
+    /// Override the model alias from config.
+    #[arg(long, short = 'm')]
+    pub model: Option<String>,
+    /// Override output language.
+    #[arg(long, short = 'l')]
+    pub lang: Option<String>,
+    /// Bypass the response cache (force a fresh model request).
+    #[arg(long)]
+    pub no_cache: bool,
 }
 
 #[derive(Subcommand)]
@@ -23,45 +37,31 @@ pub enum Command {
     /// Generate a commit message from staged changes and optionally commit.
     Commit {
         /// Commit immediately without confirmation.
-        #[arg(long)]
+        #[arg(long, short = 'y')]
         apply: bool,
         /// Open the editor pre-filled with the message (git commit -e); save to
         /// commit, leave empty to abort. Skips the interactive prompt.
         #[arg(long)]
         edit: bool,
-        /// Override the model alias from config.
-        #[arg(long)]
-        model: Option<String>,
         /// Override commit style (e.g. conventional).
         #[arg(long)]
         style: Option<String>,
-        /// Override output language.
-        #[arg(long)]
-        lang: Option<String>,
         /// Add a DCO Signed-off-by trailer to the commit.
         #[arg(long)]
         signoff: bool,
-        /// Bypass the response cache (force a fresh model request).
-        #[arg(long)]
-        no_cache: bool,
+        #[command(flatten)]
+        common: ModelOpts,
     },
     /// Generate a PR title/body from the branch diff and optionally create the PR.
     Pr {
         /// Create the PR immediately via `gh pr create` without confirmation.
-        #[arg(long)]
+        #[arg(long, short = 'y')]
         apply: bool,
-        /// Override the model alias from config.
-        #[arg(long)]
-        model: Option<String>,
-        /// Override output language.
-        #[arg(long)]
-        lang: Option<String>,
         /// Base branch to diff against (default: auto-detect).
         #[arg(long)]
         base: Option<String>,
-        /// Bypass the response cache (force a fresh model request).
-        #[arg(long)]
-        no_cache: bool,
+        #[command(flatten)]
+        common: ModelOpts,
     },
     /// Model-review the staged diff (or the branch diff with --branch).
     Review {
@@ -71,15 +71,8 @@ pub enum Command {
         /// Base branch to diff against (implies --branch).
         #[arg(long)]
         base: Option<String>,
-        /// Override the model alias from config.
-        #[arg(long)]
-        model: Option<String>,
-        /// Override output language.
-        #[arg(long)]
-        lang: Option<String>,
-        /// Bypass the response cache (force a fresh model request).
-        #[arg(long)]
-        no_cache: bool,
+        #[command(flatten)]
+        common: ModelOpts,
     },
     /// Generate CHANGELOG entries from commits between two refs.
     Changelog {
@@ -89,29 +82,15 @@ pub enum Command {
         /// End of the commit range (default: HEAD).
         #[arg(long)]
         to: Option<String>,
-        /// Override the model alias from config.
-        #[arg(long)]
-        model: Option<String>,
-        /// Override output language.
-        #[arg(long)]
-        lang: Option<String>,
-        /// Bypass the response cache (force a fresh model request).
-        #[arg(long)]
-        no_cache: bool,
+        #[command(flatten)]
+        common: ModelOpts,
     },
     /// Ask a one-shot question; piped stdin is included as context.
     Ask {
         /// The question to ask.
         question: String,
-        /// Override the model alias from config.
-        #[arg(long)]
-        model: Option<String>,
-        /// Override output language.
-        #[arg(long)]
-        lang: Option<String>,
-        /// Bypass the response cache (force a fresh model request).
-        #[arg(long)]
-        no_cache: bool,
+        #[command(flatten)]
+        common: ModelOpts,
     },
     /// Run a command and, if it fails, diagnose the failure with the model.
     ///
@@ -128,15 +107,8 @@ pub enum Command {
         /// Diagnose even when the command succeeds (exit 0).
         #[arg(long)]
         always: bool,
-        /// Override the model alias from config.
-        #[arg(long)]
-        model: Option<String>,
-        /// Override output language.
-        #[arg(long)]
-        lang: Option<String>,
-        /// Bypass the response cache (force a fresh model request).
-        #[arg(long)]
-        no_cache: bool,
+        #[command(flatten)]
+        common: ModelOpts,
     },
     /// Turn a natural-language description into a shell command and run it.
     ///
@@ -154,15 +126,8 @@ pub enum Command {
         /// Print the generated command and exit without running it.
         #[arg(long)]
         print: bool,
-        /// Override the model alias from config.
-        #[arg(long)]
-        model: Option<String>,
-        /// Override output language.
-        #[arg(long)]
-        lang: Option<String>,
-        /// Bypass the response cache (force a fresh model request).
-        #[arg(long)]
-        no_cache: bool,
+        #[command(flatten)]
+        common: ModelOpts,
     },
     /// Interactively configure providers and a default model.
     Setup {

@@ -49,55 +49,92 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Commit {
             apply,
             edit,
-            model,
             style,
-            lang,
             signoff,
-            no_cache,
-        } => commit::run(apply, edit, model, style, lang, signoff, no_cache, json).await,
+            common,
+        } => {
+            commit::run(
+                apply,
+                edit,
+                common.model,
+                style,
+                common.lang,
+                signoff,
+                common.no_cache,
+                json,
+            )
+            .await
+        }
         Command::Pr {
             apply,
-            model,
-            lang,
             base,
-            no_cache,
-        } => pr::run(apply, model, lang, base, no_cache, json).await,
+            common,
+        } => {
+            pr::run(
+                apply,
+                common.model,
+                common.lang,
+                base,
+                common.no_cache,
+                json,
+            )
+            .await
+        }
         Command::Review {
             branch,
             base,
-            model,
-            lang,
-            no_cache,
-        } => review::run(branch, base, model, lang, no_cache, json).await,
-        Command::Changelog {
-            from,
-            to,
-            model,
-            lang,
-            no_cache,
-        } => changelog::run(from, to, model, lang, no_cache, json).await,
-        Command::Ask {
-            question,
-            model,
-            lang,
-            no_cache,
-        } => ask::run(question, model, lang, no_cache, json).await,
+            common,
+        } => {
+            review::run(
+                branch,
+                base,
+                common.model,
+                common.lang,
+                common.no_cache,
+                json,
+            )
+            .await
+        }
+        Command::Changelog { from, to, common } => {
+            changelog::run(from, to, common.model, common.lang, common.no_cache, json).await
+        }
+        Command::Ask { question, common } => {
+            ask::run(question, common.model, common.lang, common.no_cache, json).await
+        }
         Command::Fix {
             cmd,
             shell,
             always,
-            model,
-            lang,
-            no_cache,
-        } => fix::run(cmd, shell, always, model, lang, no_cache, json).await,
+            common,
+        } => {
+            fix::run(
+                cmd,
+                shell,
+                always,
+                common.model,
+                common.lang,
+                common.no_cache,
+                json,
+            )
+            .await
+        }
         Command::Run {
             prompt,
             yes,
             print,
-            model,
-            lang,
-            no_cache,
-        } => run::run(prompt, yes, print, model, lang, no_cache, json).await,
+            common,
+        } => {
+            run::run(
+                prompt,
+                yes,
+                print,
+                common.model,
+                common.lang,
+                common.no_cache,
+                json,
+            )
+            .await
+        }
         Command::Update { check, version } => update::run(check, version, json).await,
         Command::Uninstall { purge, yes } => uninstall::run(purge, yes, json),
     }
