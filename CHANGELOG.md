@@ -9,6 +9,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.0] — 2026-07-01
+
+### Added
+
+- `aish commit -a`/`--all` stages tracked changes first (`git add -u`),
+  mirroring `git commit -a`. Untracked files are still left alone.
+- `aish pr --draft` passes through to `gh pr create --draft`.
+
 ## [0.12.0] — 2026-06-26
 
 ### Added
