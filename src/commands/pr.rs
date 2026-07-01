@@ -8,11 +8,13 @@ use anyhow::{anyhow, Result};
 use std::io::Write;
 use std::path::Path;
 
+#[allow(clippy::too_many_arguments)]
 pub async fn run(
     apply: bool,
     model: Option<String>,
     lang: Option<String>,
     base: Option<String>,
+    draft: bool,
     no_cache: bool,
     json: bool,
 ) -> Result<()> {
@@ -56,7 +58,7 @@ pub async fn run(
     }
 
     let decision = if apply {
-        create_pr(&cwd, &pr)?;
+        create_pr(&cwd, &pr, draft)?;
         if !json {
             println!("PR created.");
         }
@@ -65,7 +67,7 @@ pub async fn run(
         // JSON mode is non-interactive: emit the suggestion without creating.
         "suggested"
     } else {
-        confirm_loop(&cwd, pr.clone())?
+        confirm_loop(&cwd, pr.clone(), draft)?
     };
 
     if json {
@@ -94,10 +96,14 @@ pub async fn run(
 }
 
 /// Create the PR via `gh pr create` with the generated title and body.
-fn create_pr(cwd: &Path, pr: &PrDescription) -> Result<()> {
+fn create_pr(cwd: &Path, pr: &PrDescription, draft: bool) -> Result<()> {
+    let mut args = vec!["pr", "create", "--title", &pr.title, "--body", &pr.body];
+    if draft {
+        args.push("--draft");
+    }
     let out = std::process::Command::new("gh")
         .current_dir(cwd)
-        .args(["pr", "create", "--title", &pr.title, "--body", &pr.body])
+        .args(&args)
         .output()
         .map_err(|e| {
             if e.kind() == std::io::ErrorKind::NotFound {
@@ -119,7 +125,7 @@ fn create_pr(cwd: &Path, pr: &PrDescription) -> Result<()> {
 
 /// Interactive accept/edit/reject loop. The editor receives `title\n\nbody`;
 /// after an edit the first line becomes the new title.
-fn confirm_loop(cwd: &Path, mut pr: PrDescription) -> Result<&'static str> {
+fn confirm_loop(cwd: &Path, mut pr: PrDescription, draft: bool) -> Result<&'static str> {
     let mut edited = false;
     loop {
         print!("Create PR? [Y/n/e(dit)] ");
@@ -133,7 +139,7 @@ fn confirm_loop(cwd: &Path, mut pr: PrDescription) -> Result<&'static str> {
         }
         match input.trim().to_lowercase().as_str() {
             "" | "y" | "yes" => {
-                create_pr(cwd, &pr)?;
+                create_pr(cwd, &pr, draft)?;
                 println!("PR created.");
                 return Ok(if edited { "edited" } else { "applied" });
             }

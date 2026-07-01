@@ -113,6 +113,51 @@ fn pr_apply_invokes_gh_with_title_and_body() {
 }
 
 #[test]
+fn pr_draft_flag_passes_through_to_gh() {
+    let repo = repo_with_feature_branch();
+    let cfg = tempdir().unwrap();
+    let cfg_path = cfg.path().join("config.yaml");
+    std::fs::write(&cfg_path, CONFIG).unwrap();
+
+    let bin = tempdir().unwrap();
+    let log_path = bin.path().join("gh_args.log");
+    let gh = bin.path().join("gh");
+    std::fs::write(
+        &gh,
+        format!(
+            "#!/bin/sh\nprintf '%s\\n' \"$@\" > {}\n",
+            log_path.display()
+        ),
+    )
+    .unwrap();
+    let mut perm = std::fs::metadata(&gh).unwrap().permissions();
+    use std::os::unix::fs::PermissionsExt;
+    perm.set_mode(0o755);
+    std::fs::set_permissions(&gh, perm).unwrap();
+    let path = format!(
+        "{}:{}",
+        bin.path().display(),
+        std::env::var("PATH").unwrap()
+    );
+
+    Command::cargo_bin("aish")
+        .unwrap()
+        .current_dir(repo.path())
+        .env("AISH_CONFIG", &cfg_path)
+        .env("AISH_PROVIDER", "mock")
+        .env("AISH_MOCK_REPLY", MOCK_REPLY)
+        .env("HOME", cfg.path())
+        .env("PATH", &path)
+        .args(["pr", "--apply", "--draft"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("PR created"));
+
+    let logged = std::fs::read_to_string(&log_path).expect("gh must have been invoked");
+    assert!(logged.contains("--draft"));
+}
+
+#[test]
 fn pr_json_without_apply_suggests_without_creating() {
     let repo = repo_with_feature_branch();
     let cfg = tempdir().unwrap();

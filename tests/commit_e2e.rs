@@ -57,6 +57,54 @@ commit: { style: conventional, language: en, model: default }
 }
 
 #[test]
+fn commit_all_flag_stages_tracked_changes_before_committing() {
+    let repo = tempdir().unwrap();
+    let cfg = tempdir().unwrap();
+    let cfg_path = cfg.path().join("config.yaml");
+    std::fs::write(
+        &cfg_path,
+        r#"
+providers:
+  openai: { api_key: sk-x }
+models:
+  default: { provider: openai, model: gpt-5-mini }
+commit: { style: conventional, language: en, model: default }
+"#,
+    )
+    .unwrap();
+
+    git(repo.path(), &["init", "-q"]);
+    git(repo.path(), &["config", "user.email", "t@e.st"]);
+    git(repo.path(), &["config", "user.name", "t"]);
+    git(repo.path(), &["config", "commit.gpgsign", "false"]);
+    std::fs::write(repo.path().join("a.txt"), "hello").unwrap();
+    git(repo.path(), &["add", "a.txt"]);
+    git(repo.path(), &["commit", "-q", "-m", "init"]);
+
+    // Modify the tracked file but do NOT `git add` it; `-a` should stage it.
+    std::fs::write(repo.path().join("a.txt"), "hello world").unwrap();
+
+    Command::cargo_bin("aish")
+        .unwrap()
+        .current_dir(repo.path())
+        .env("AISH_CONFIG", &cfg_path)
+        .env("AISH_PROVIDER", "mock")
+        .env("AISH_MOCK_REPLY", "feat: update greeting")
+        .env("HOME", cfg.path())
+        .args(["commit", "-a", "--apply"])
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("feat: update greeting"));
+
+    let log = Std::new("git")
+        .current_dir(repo.path())
+        .args(["log", "--oneline"])
+        .output()
+        .unwrap();
+    assert!(String::from_utf8_lossy(&log.stdout).contains("feat: update greeting"));
+}
+
+#[test]
 fn commit_edit_opens_editor_and_commits_edited_message() {
     let repo = tempdir().unwrap();
     let cfg = tempdir().unwrap();

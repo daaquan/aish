@@ -39,6 +39,9 @@ pub enum Command {
         /// Commit immediately without confirmation.
         #[arg(long, short = 'y')]
         apply: bool,
+        /// Stage all tracked changes first (git commit -a), like `git add -u`.
+        #[arg(long, short = 'a')]
+        all: bool,
         /// Open the editor pre-filled with the message (git commit -e); save to
         /// commit, leave empty to abort. Skips the interactive prompt.
         #[arg(long)]
@@ -60,6 +63,9 @@ pub enum Command {
         /// Base branch to diff against (default: auto-detect).
         #[arg(long)]
         base: Option<String>,
+        /// Create the PR as a draft (passthrough to `gh pr create --draft`).
+        #[arg(long)]
+        draft: bool,
         #[command(flatten)]
         common: ModelOpts,
     },

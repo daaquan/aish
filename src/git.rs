@@ -59,6 +59,13 @@ fn run_checked(dir: &Path, args: &[&str]) -> Result<std::process::Output, GitErr
     Ok(out)
 }
 
+/// Stage all tracked changes (`git add -u`), mirroring `git commit -a`.
+/// Does not stage untracked files.
+pub fn stage_tracked(dir: &Path) -> Result<(), GitError> {
+    run_checked(dir, &["add", "-u"])?;
+    Ok(())
+}
+
 /// Return the staged diff (`git diff --cached`). Empty string if nothing staged.
 pub fn staged_diff(dir: &Path) -> Result<String, GitError> {
     let check = run(dir, &["rev-parse", "--is-inside-work-tree"])?;
@@ -454,6 +461,29 @@ mod tests {
         let log = log_range(p, "v0.1.0", "HEAD").unwrap();
         assert!(log.contains("feat: add b"));
         assert!(!log.contains("init"));
+    }
+
+    #[test]
+    fn stage_tracked_stages_modified_files_but_not_untracked() {
+        let dir = init_repo();
+        let p = dir.path();
+        std::fs::write(p.join("a.txt"), "hello").unwrap();
+        Command::new("git")
+            .current_dir(p)
+            .args(["add", "a.txt"])
+            .status()
+            .unwrap();
+        commit(p, "init", false).unwrap();
+
+        // Modify the tracked file and add an untracked one.
+        std::fs::write(p.join("a.txt"), "changed").unwrap();
+        std::fs::write(p.join("untracked.txt"), "new").unwrap();
+
+        stage_tracked(p).unwrap();
+        let diff = staged_diff(p).unwrap();
+        assert!(diff.contains("a.txt"));
+        assert!(diff.contains("changed"));
+        assert!(!diff.contains("untracked.txt"));
     }
 
     #[test]

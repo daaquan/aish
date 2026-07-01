@@ -48,6 +48,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         },
         Command::Commit {
             apply,
+            all,
             edit,
             style,
             signoff,
@@ -55,6 +56,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         } => {
             commit::run(
                 apply,
+                all,
                 edit,
                 common.model,
                 style,
@@ -68,6 +70,7 @@ pub async fn run(cli: Cli) -> Result<()> {
         Command::Pr {
             apply,
             base,
+            draft,
             common,
         } => {
             pr::run(
@@ -75,6 +78,7 @@ pub async fn run(cli: Cli) -> Result<()> {
                 common.model,
                 common.lang,
                 base,
+                draft,
                 common.no_cache,
                 json,
             )

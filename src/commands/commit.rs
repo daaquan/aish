@@ -10,6 +10,7 @@ use std::io::Write;
 #[allow(clippy::too_many_arguments)]
 pub async fn run(
     apply: bool,
+    all: bool,
     edit: bool,
     model: Option<String>,
     style: Option<String>,
@@ -20,6 +21,10 @@ pub async fn run(
 ) -> Result<()> {
     let cfg = Config::load()?;
     let cwd = std::env::current_dir()?;
+
+    if all {
+        git::stage_tracked(&cwd)?;
+    }
 
     let diff = git::staged_diff(&cwd)?;
     if diff.trim().is_empty() {
