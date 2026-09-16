@@ -3,12 +3,13 @@
 //! [`crate::update`]; this module owns the network calls and CLI output.
 //!
 //! Test hooks: `AISH_UPDATE_API_BASE` / `AISH_UPDATE_DOWNLOAD_BASE` redirect
-//! the GitHub endpoints to a local mock server.
+//! the GitHub endpoints to a local mock server. Debug builds only — see
+//! [`crate::update::endpoint_base`].
 
 use crate::commands::emit_json;
 use crate::update::{
-    asset_name, download_url, is_cargo_install, is_newer, looks_like_binary, normalize_tag,
-    parse_version, replace_binary,
+    asset_name, download_url, endpoint_base, is_cargo_install, is_newer, looks_like_binary,
+    normalize_tag, parse_version, replace_binary,
 };
 use anyhow::{anyhow, Context, Result};
 
@@ -17,10 +18,8 @@ const DEFAULT_DOWNLOAD_BASE: &str = "https://github.com";
 
 pub async fn run(check: bool, version: Option<String>, json: bool) -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");
-    let api_base =
-        std::env::var("AISH_UPDATE_API_BASE").unwrap_or_else(|_| DEFAULT_API_BASE.into());
-    let download_base =
-        std::env::var("AISH_UPDATE_DOWNLOAD_BASE").unwrap_or_else(|_| DEFAULT_DOWNLOAD_BASE.into());
+    let api_base = endpoint_base("AISH_UPDATE_API_BASE", DEFAULT_API_BASE);
+    let download_base = endpoint_base("AISH_UPDATE_DOWNLOAD_BASE", DEFAULT_DOWNLOAD_BASE);
 
     let client = reqwest::Client::new();
     let tag = match &version {

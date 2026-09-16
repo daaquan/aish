@@ -2,7 +2,9 @@
 //! E2E for `aish update` / `aish uninstall`. The real binary is copied into
 //! a temp dir and the copy is executed, so `current_exe()` resolves inside
 //! the sandbox and the build artifact is never touched. Releases are served
-//! by wiremock via the `AISH_UPDATE_*_BASE` overrides — no network.
+//! by wiremock via the `AISH_UPDATE_*_BASE` overrides — no network. Those
+//! overrides are honoured in debug builds only (see `update::endpoint_base`),
+//! so the `update_*` cases below are ignored under `--release`.
 
 use aish::update::asset_name;
 use serde_json::json;
@@ -64,6 +66,7 @@ async fn mock_release(server: &MockServer, tag: &str, body: &[u8]) {
 
 // ---------------------------------------------------------------- update --
 
+#[cfg_attr(not(debug_assertions), ignore = "AISH_UPDATE_* hooks are debug-only")]
 #[tokio::test(flavor = "multi_thread")]
 async fn update_replaces_binary_when_newer_release_exists() {
     let home = tempdir().unwrap();
@@ -82,6 +85,7 @@ async fn update_replaces_binary_when_newer_release_exists() {
     assert_eq!(std::fs::read(&bin).unwrap(), fake, "binary not replaced");
 }
 
+#[cfg_attr(not(debug_assertions), ignore = "AISH_UPDATE_* hooks are debug-only")]
 #[tokio::test(flavor = "multi_thread")]
 async fn update_is_noop_when_already_latest() {
     let home = tempdir().unwrap();
@@ -108,6 +112,7 @@ async fn update_is_noop_when_already_latest() {
     );
 }
 
+#[cfg_attr(not(debug_assertions), ignore = "AISH_UPDATE_* hooks are debug-only")]
 #[tokio::test(flavor = "multi_thread")]
 async fn update_check_reports_without_downloading() {
     let home = tempdir().unwrap();
@@ -142,6 +147,7 @@ async fn update_check_reports_without_downloading() {
     assert!(out2.status.success());
 }
 
+#[cfg_attr(not(debug_assertions), ignore = "AISH_UPDATE_* hooks are debug-only")]
 #[tokio::test(flavor = "multi_thread")]
 async fn update_rejects_non_binary_payload_and_keeps_old_binary() {
     let home = tempdir().unwrap();
@@ -160,6 +166,7 @@ async fn update_rejects_non_binary_payload_and_keeps_old_binary() {
     );
 }
 
+#[cfg_attr(not(debug_assertions), ignore = "AISH_UPDATE_* hooks are debug-only")]
 #[tokio::test(flavor = "multi_thread")]
 async fn update_refuses_cargo_installed_binary() {
     let home = tempdir().unwrap();
@@ -178,6 +185,7 @@ async fn update_refuses_cargo_installed_binary() {
     assert!(bin.exists());
 }
 
+#[cfg_attr(not(debug_assertions), ignore = "AISH_UPDATE_* hooks are debug-only")]
 #[tokio::test(flavor = "multi_thread")]
 async fn update_version_flag_pins_a_specific_tag() {
     let home = tempdir().unwrap();

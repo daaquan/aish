@@ -9,6 +9,29 @@ use std::path::Path;
 /// GitHub repository the release assets come from.
 pub const REPO: &str = "daaquan/aish";
 
+/// Resolve a release endpoint base URL.
+///
+/// `AISH_UPDATE_API_BASE` / `AISH_UPDATE_DOWNLOAD_BASE` exist so the e2e tests
+/// can point the update flow at a local mock server. They are honoured in debug
+/// builds only: in a shipped binary, anything able to set an environment
+/// variable could otherwise redirect a self-update download — over plain HTTP —
+/// to a host of its choosing, and the payload is only checked for executable
+/// magic bytes. Release builds always use the compiled-in default.
+///
+/// Note for anyone running the e2e suite under `--release`: the hooks are off
+/// there, so those tests are debug-profile only.
+pub fn endpoint_base(var: &str, default: &str) -> String {
+    #[cfg(debug_assertions)]
+    if let Ok(v) = std::env::var(var) {
+        if !v.is_empty() {
+            return v;
+        }
+    }
+    #[cfg(not(debug_assertions))]
+    let _ = var;
+    default.to_string()
+}
+
 /// Parse `"0.5.0"` or `"v0.5.0"` into `(major, minor, patch)`.
 pub fn parse_version(s: &str) -> Option<(u64, u64, u64)> {
     let s = s.strip_prefix('v').unwrap_or(s);
@@ -128,6 +151,33 @@ pub fn replace_binary(target: &Path, bytes: &[u8]) -> std::io::Result<()> {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    /// The `AISH_UPDATE_*` variables are test hooks. A shipped binary must
+    /// ignore them, or anything that can set an environment variable can point
+    /// a self-update download at a host of its choosing.
+    #[test]
+    fn endpoint_base_falls_back_to_the_compiled_in_default() {
+        std::env::remove_var("AISH_TEST_ENDPOINT_BASE");
+        assert_eq!(
+            endpoint_base("AISH_TEST_ENDPOINT_BASE", "https://api.github.com"),
+            "https://api.github.com"
+        );
+    }
+
+    #[test]
+    fn endpoint_base_honours_the_override_only_in_debug_builds() {
+        std::env::set_var("AISH_TEST_ENDPOINT_BASE_2", "http://127.0.0.1:9999");
+        let got = endpoint_base("AISH_TEST_ENDPOINT_BASE_2", "https://api.github.com");
+        std::env::remove_var("AISH_TEST_ENDPOINT_BASE_2");
+        if cfg!(debug_assertions) {
+            assert_eq!(got, "http://127.0.0.1:9999", "test hook must work in tests");
+        } else {
+            assert_eq!(
+                got, "https://api.github.com",
+                "release build honoured env hook"
+            );
+        }
+    }
 
     #[test]
     fn parses_plain_and_v_prefixed_versions() {
