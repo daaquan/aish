@@ -277,16 +277,30 @@ commit:
 
 /// Write `contents` to `path` (creating parent dirs), restricting it to the
 /// owner (`0600`) on unix since the file may hold plaintext API keys.
+///
+/// The file is *created* 0600 rather than chmodded afterwards: writing first
+/// and tightening second leaves a window where the key is readable at the
+/// caller's umask. `mode()` only applies when the file is created, so an
+/// already-existing, looser file is tightened explicitly after the write.
 pub fn write_secure(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
-    std::fs::write(path, contents)?;
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
+        use std::io::Write;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let mut f = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .mode(0o600)
+            .open(path)?;
+        f.write_all(contents.as_bytes())?;
         std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
     }
+    #[cfg(not(unix))]
+    std::fs::write(path, contents)?;
     Ok(())
 }
 
@@ -313,6 +327,35 @@ fn expand_env(input: &str) -> Result<String, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A config file may hold a plaintext API key, so it must never be
+    /// readable by anyone but the owner — not even for the instant between
+    /// creating it and tightening its mode.
+    #[cfg(unix)]
+    #[test]
+    fn write_secure_never_exposes_contents_to_other_users() {
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        let dir = tempfile::tempdir().unwrap();
+
+        // Fresh file: created 0600, never wider.
+        let fresh = dir.path().join("nested").join("config.yaml");
+        write_secure(&fresh, "providers:\n  openai: { api_key: sk-secret }\n").unwrap();
+        let mode = std::fs::metadata(&fresh).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "fresh config left at {mode:o}");
+
+        // Pre-existing world-readable file: tightened on overwrite.
+        let existing = dir.path().join("loose.yaml");
+        std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .mode(0o644)
+            .open(&existing)
+            .unwrap();
+        write_secure(&existing, "providers: {}\n").unwrap();
+        let mode = std::fs::metadata(&existing).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "existing config left at {mode:o}");
+    }
 
     #[test]
     fn parses_minimal_config() {
