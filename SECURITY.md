@@ -7,10 +7,10 @@
 aish is a solo-maintained project on a rolling release. Only the latest
 released version receives security fixes.
 
-| Version | Supported |
-| ------- | --------- |
-| 0.13.x  | ✅        |
-| < 0.13  | ❌        |
+| Version        | Supported |
+| -------------- | --------- |
+| Latest release | ✅        |
+| Older releases | ❌        |
 
 Upgrade to the latest release before reporting an issue.
 
@@ -70,10 +70,14 @@ model provider you configure. Treat that as disclosure to a third party.
 - **Cache** (`~/.aish/cache/`) stores provider *responses* on disk, keyed by a
   hash of the request. Responses can contain your code. Files are written with
   your default umask, so on a shared machine tighten `~/.aish` yourself:
-  `chmod 700 ~/.aish`. `aish cache clear` empties it.
-- **`aish run` / `aish fix`** can propose shell commands. Read what is proposed
-  before confirming, and do not pass `--yes` (no-prompt execution) when the
-  input comes from an untrusted source.
+  `chmod 700 ~/.aish`. `aish cache clear` empties it; it asks first and treats
+  non-interactive input as "no", so pass `--yes` when running it from a script.
+- **`aish run`** turns your prompt into a shell command and runs it after a
+  confirm prompt. Read what is proposed before confirming. Both `--yes` and the
+  global `--json` flag skip that prompt and run the command immediately, so
+  pass neither when the input comes from an untrusted source; use `--print` to
+  review the command without running it. (`aish fix` only runs the command you
+  give it; it never executes the model's suggested fix.)
 
 ## Disclosure
 
