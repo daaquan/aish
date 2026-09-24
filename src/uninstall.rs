@@ -84,13 +84,17 @@ mod tests {
 
     #[test]
     fn purge_rejects_dangerous_paths() {
-        let home = Path::new("/home/u");
+        // Absolute on every platform, so each case reaches the check it is
+        // for: `/`-rooted literals have no drive letter on Windows, where the
+        // relative-path guard would reject them all first.
+        let home = &absolute_home();
+        let root = home.ancestors().last().unwrap();
         assert!(validate_purge_path(Path::new(""), home).is_err());
-        assert!(validate_purge_path(Path::new("/"), home).is_err());
+        assert!(validate_purge_path(root, home).is_err());
         assert!(validate_purge_path(home, home).is_err());
         // Outside home: a typo'd $AISH_HOME must not nuke system dirs.
-        assert!(validate_purge_path(Path::new("/etc"), home).is_err());
-        assert!(validate_purge_path(Path::new("/srv/aish-data"), home).is_err());
+        assert!(validate_purge_path(&root.join("etc"), home).is_err());
+        assert!(validate_purge_path(&root.join("srv").join("aish-data"), home).is_err());
         // Relative paths are ambiguous — reject.
         assert!(validate_purge_path(Path::new(".aish"), home).is_err());
     }
@@ -138,9 +142,9 @@ mod tests {
 
     #[test]
     fn purge_accepts_dirs_strictly_inside_home() {
-        let home = Path::new("/home/u");
-        assert!(validate_purge_path(Path::new("/home/u/.aish"), home).is_ok());
-        assert!(validate_purge_path(Path::new("/home/u/custom/aish"), home).is_ok());
+        let home = &absolute_home();
+        assert!(validate_purge_path(&home.join(".aish"), home).is_ok());
+        assert!(validate_purge_path(&home.join("custom").join("aish"), home).is_ok());
     }
 
     #[test]

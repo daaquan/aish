@@ -142,6 +142,9 @@ mod tests {
         assert_eq!(resolve_editor(), "vi");
     }
 
+    // The editor runs through `sh`, which Windows has only when Git's usr/bin
+    // is on PATH, so the tests that launch one are unix-only.
+    #[cfg(unix)]
     #[test]
     fn edit_returns_editor_modified_content() {
         // A non-interactive "editor" that overwrites the file with new text.
@@ -149,12 +152,14 @@ mod tests {
         assert_eq!(out, "fix: edited subject");
     }
 
+    #[cfg(unix)]
     #[test]
     fn edit_trims_trailing_whitespace() {
         let out = edit_with("printf 'feat: x\\n\\n' >", "seed").unwrap();
         assert_eq!(out, "feat: x");
     }
 
+    #[cfg(unix)]
     #[test]
     fn edit_surfaces_failure_when_editor_exits_nonzero() {
         let err = edit_with("false", "seed").unwrap_err();

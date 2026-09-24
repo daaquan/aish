@@ -64,6 +64,9 @@ fn pr_prints_generated_title_and_body() {
         .stdout(predicates::str::contains("Adds the pr subcommand."));
 }
 
+// The fake `gh` in these tests is a `#!/bin/sh` script with the exec mode
+// bit, found through a `:`-separated PATH: unix only.
+#[cfg(unix)]
 #[test]
 fn pr_apply_invokes_gh_with_title_and_body() {
     let repo = repo_with_feature_branch();
@@ -114,6 +117,7 @@ fn pr_apply_invokes_gh_with_title_and_body() {
     assert!(logged.contains("Adds the pr subcommand."));
 }
 
+#[cfg(unix)]
 #[test]
 fn pr_draft_flag_passes_through_to_gh() {
     let repo = repo_with_feature_branch();

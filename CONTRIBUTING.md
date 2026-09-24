@@ -74,5 +74,11 @@ A standard Rust toolchain (stable) is all you need.
 - Lint: `cargo clippy --all-targets -- -D warnings && cargo fmt --all -- --check`
 - Run a single test: `cargo test <name> -- --test-threads=1`
 
+On Windows, the e2e tests that run a command or `$EDITOR` (`fix_e2e`, `run_e2e`,
+`commit_e2e`'s editor cases) need `sh` on `PATH`, as aish itself does there: run
+them from Git Bash, or add Git for Windows' `usr\bin` to `PATH`. `cargo test --lib`
+does not need it. Tests that only work on unix (file modes, shell-script fakes, a data
+dir placed through `$HOME`) are compiled out there.
+
 The test suite runs offline: set `AISH_PROVIDER=mock` to return a canned reply
 (`$AISH_MOCK_REPLY`) without calling any provider.
