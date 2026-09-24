@@ -85,12 +85,19 @@ fn default_commit() -> CommitConfig {
 
 impl Config {
     /// Default path: `config.yaml` in the data dir (`$AISH_HOME`, default
-    /// `~/.aish`); `$AISH_CONFIG` overrides the file itself.
+    /// `~/.aish`); `$AISH_CONFIG`, unless blank, overrides the file itself.
     pub fn default_path() -> PathBuf {
-        if let Ok(p) = std::env::var("AISH_CONFIG") {
-            return PathBuf::from(p);
-        }
-        crate::paths::default_data_dir().join("config.yaml")
+        Self::path_override()
+            .unwrap_or_else(|| crate::paths::default_data_dir().join("config.yaml"))
+    }
+
+    /// The file `$AISH_CONFIG` names, if any. A blank value is ignored, like a
+    /// blank `$AISH_HOME`: it names no file, and taken as a path it would only
+    /// make every command fail with NotFound for an empty path.
+    fn path_override() -> Option<PathBuf> {
+        std::env::var_os("AISH_CONFIG")
+            .filter(|p| !p.to_str().is_some_and(|s| s.trim().is_empty()))
+            .map(PathBuf::from)
     }
 
     pub fn load() -> Result<Self, ConfigError> {
@@ -101,10 +108,9 @@ impl Config {
             // which names a dir for aish to keep its files in, like ~/.aish.
             // A custom $AISH_CONFIG pointed at a missing file is the user
             // naming a specific file — don't create a different one for them;
-            // surface NotFound instead.
-            if std::env::var_os("AISH_CONFIG").is_none()
-                && Self::write_template(&path, false).is_ok()
-            {
+            // surface NotFound instead. A blank one counts as unset, as in
+            // default_path.
+            if Self::path_override().is_none() && Self::write_template(&path, false).is_ok() {
                 // Point first-run users at the wizard; the template ships with
                 // Anthropic + Ollama but no API keys, so commands fail until one
                 // is configured. To stderr so `--json` stdout stays clean.
@@ -364,6 +370,7 @@ fn expand_env(input: &str) -> Result<String, ConfigError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     /// A config file may hold a plaintext API key, so it must never be
     /// readable by anyone but the owner — not even for the instant between
@@ -413,6 +420,59 @@ commit: { style: conventional, language: en, model: default }
         let cfg = Config::from_yaml(yaml).unwrap();
         assert_eq!(cfg.commit.model, "default");
         assert_eq!(cfg.models["default"].model, "gpt-5-mini");
+    }
+
+    /// A blank `$AISH_CONFIG` names no file, so it means the default path,
+    /// like a blank `$AISH_HOME` — also for `load`, which lays down the
+    /// template only at the default path.
+    #[test]
+    #[serial(aish_home)]
+    fn blank_aish_config_falls_back_to_the_default_path() {
+        let data = tempfile::tempdir().unwrap();
+        let default = data.path().join("config.yaml");
+        std::env::set_var("AISH_HOME", data.path());
+        let mut paths = Vec::new();
+        for value in ["", "  ", "\t"] {
+            std::env::set_var("AISH_CONFIG", value);
+            paths.push((value, Config::default_path()));
+        }
+        std::env::set_var("AISH_CONFIG", " ");
+        let loaded = Config::load();
+        std::env::remove_var("AISH_CONFIG");
+        std::env::remove_var("AISH_HOME");
+
+        for (value, path) in paths {
+            assert_eq!(path, default, "AISH_CONFIG={value:?}");
+        }
+        assert!(loaded.is_ok(), "first run failed: {:?}", loaded.err());
+        assert!(default.exists(), "template not created at the default path");
+    }
+
+    /// A non-blank `$AISH_CONFIG` names a specific file: when it is missing,
+    /// `load` surfaces NotFound rather than creating a template there or at
+    /// the default path.
+    #[test]
+    #[serial(aish_home)]
+    fn missing_aish_config_is_not_found_and_not_created() {
+        let data = tempfile::tempdir().unwrap();
+        let missing = data.path().join("missing.yaml");
+        std::env::set_var("AISH_HOME", data.path());
+        std::env::set_var("AISH_CONFIG", &missing);
+        let loaded = Config::load();
+        std::env::remove_var("AISH_CONFIG");
+        std::env::remove_var("AISH_HOME");
+
+        assert!(
+            matches!(&loaded, Err(ConfigError::NotFound(p)) if *p == missing),
+            "expected NotFound({}), got {:?}",
+            missing.display(),
+            loaded.map(|_| ())
+        );
+        assert!(!missing.exists(), "template created at $AISH_CONFIG");
+        assert!(
+            !data.path().join("config.yaml").exists(),
+            "template created at the default path"
+        );
     }
 
     #[test]
