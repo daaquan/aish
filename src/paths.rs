@@ -25,6 +25,21 @@ pub fn default_data_dir() -> PathBuf {
     data_dir(&home)
 }
 
+/// Create `dir` and any missing parents, owner-only (`0700`) on unix: the data
+/// dir holds API keys and provider responses, which can contain the user's
+/// code. Only dirs created here get that mode. One that already exists is
+/// left as it is, since a `$AISH_HOME` may be shared on purpose.
+pub fn create_dir_owner_only(dir: &Path) -> std::io::Result<()> {
+    let mut builder = std::fs::DirBuilder::new();
+    builder.recursive(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::DirBuilderExt;
+        builder.mode(0o700);
+    }
+    builder.create(dir)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -88,5 +103,31 @@ mod tests {
         assert_eq!(cache, data.join("cache"));
         assert_eq!(audit, data.join("audit.log"));
         assert_eq!(overridden, PathBuf::from("/elsewhere/config.yaml"));
+    }
+
+    /// Checks group/other bits only, so the result does not depend on the
+    /// umask the tests run under.
+    #[cfg(unix)]
+    #[test]
+    fn creates_missing_dirs_owner_only_and_leaves_existing_ones_alone() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        let root = tempfile::tempdir().unwrap();
+        let shared = root.path().join("shared");
+        std::fs::create_dir(&shared).unwrap();
+        std::fs::set_permissions(&shared, std::fs::Permissions::from_mode(0o755)).unwrap();
+
+        let data = shared.join("data");
+        let cache = data.join("cache");
+        create_dir_owner_only(&cache).unwrap();
+
+        for dir in [&data, &cache] {
+            let m = mode(dir);
+            assert_eq!(m & 0o077, 0, "{} created at {m:o}", dir.display());
+        }
+        assert_eq!(mode(&shared), 0o755, "existing dir must keep its mode");
+        // Already there: nothing to do, and still no chmod.
+        create_dir_owner_only(&shared).unwrap();
+        assert_eq!(mode(&shared), 0o755);
     }
 }

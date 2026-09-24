@@ -27,7 +27,7 @@ pub fn record(entry: &AuditEntry) -> std::io::Result<()> {
 
 pub fn record_to(path: &Path, entry: &AuditEntry) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
-        std::fs::create_dir_all(parent)?;
+        crate::paths::create_dir_owner_only(parent)?;
     }
     let ts = SystemTime::now()
         .duration_since(UNIX_EPOCH)
@@ -35,10 +35,16 @@ pub fn record_to(path: &Path, entry: &AuditEntry) -> std::io::Result<()> {
         .as_secs();
     let mut value = serde_json::to_value(entry).unwrap();
     value["ts"] = serde_json::json!(ts);
-    let mut f = std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(path)?;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.create(true).append(true);
+    // Owner-only from creation, like everything else in the data dir. An
+    // existing log keeps its mode: it holds metadata only, never a secret.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    let mut f = opts.open(path)?;
     writeln!(f, "{value}")?;
     Ok(())
 }
@@ -69,5 +75,29 @@ mod tests {
         assert_eq!(first["provider"], "openai");
         assert!(first.get("ts").is_some());
         assert!(!content.contains("api_key"));
+    }
+
+    /// Group/other bits only, so the result does not depend on the umask.
+    #[cfg(unix)]
+    #[test]
+    fn creates_data_dir_and_log_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        let root = tempdir().unwrap();
+        let data = root.path().join("data");
+        let path = data.join("audit.log");
+        let entry = AuditEntry {
+            tool: "git.commit.message.generate".into(),
+            provider: "openai".into(),
+            model: "gpt-5-mini".into(),
+            prompt_tokens: 1,
+            completion_tokens: 1,
+            decision: "applied".into(),
+        };
+        record_to(&path, &entry).unwrap();
+        for p in [&data, &path] {
+            let m = mode(p);
+            assert_eq!(m & 0o077, 0, "{} created at {m:o}", p.display());
+        }
     }
 }

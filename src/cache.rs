@@ -76,10 +76,10 @@ pub fn get(dir: &Path, key: &str) -> Option<String> {
     std::fs::read_to_string(entry_path(dir, key)).ok()
 }
 
-/// Store `value` for `key`, creating the cache directory if needed.
+/// Store `value` for `key`, creating the cache directory if needed. Entries
+/// are owner-only, like the config: a response can contain the user's code.
 pub fn put(dir: &Path, key: &str, value: &str) -> std::io::Result<()> {
-    std::fs::create_dir_all(dir)?;
-    std::fs::write(entry_path(dir, key), value)
+    crate::config::write_secure(&entry_path(dir, key), value)
 }
 
 /// Entry count and total size in bytes of the cache directory.
@@ -191,6 +191,22 @@ mod tests {
         // Idempotent: clearing again (or a missing dir) removes nothing.
         assert_eq!(clear(dir.path()).unwrap(), 0);
         assert_eq!(clear(&dir.path().join("nope")).unwrap(), 0);
+    }
+
+    /// Group/other bits only, so the result does not depend on the umask.
+    #[cfg(unix)]
+    #[test]
+    fn put_creates_dirs_and_entries_owner_only() {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
+        let root = tempdir().unwrap();
+        let data = root.path().join("data");
+        let dir = data.join("cache");
+        put(&dir, "aaaa", "fn secret() {}").unwrap();
+        for path in [&data, &dir, &entry_path(&dir, "aaaa")] {
+            let m = mode(path);
+            assert_eq!(m & 0o077, 0, "{} created at {m:o}", path.display());
+        }
     }
 
     #[test]

@@ -76,8 +76,10 @@ model provider you configure. Treat that as disclosure to a third party.
   provider, model, token counts, and your decision. No prompt or response text,
   no keys.
 - **Cache** (`~/.aish/cache/`) stores provider *responses* on disk, keyed by a
-  hash of the request. Responses can contain your code. Files are written with
-  your default umask, so on a shared machine tighten `~/.aish` yourself:
+  hash of the request. Responses can contain your code. On unix, aish creates
+  the data dir and `cache/` with mode `700`, and the files it writes there
+  with mode `600`. It never changes the mode of a directory that already
+  exists, so tighten a `~/.aish` created by an older version once:
   `chmod 700 ~/.aish`. `aish cache clear` empties it; it asks first and treats
   non-interactive input as "no", so pass `--yes` when running it from a script.
 - **`aish run`** turns your prompt into a shell command and runs it after a
