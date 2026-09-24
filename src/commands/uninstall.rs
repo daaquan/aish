@@ -5,7 +5,7 @@
 
 use crate::commands::emit_json;
 use crate::uninstall::{data_dir, dir_size, human_size, validate_purge_path};
-use crate::update::is_cargo_install;
+use crate::update::cargo_install;
 use anyhow::{anyhow, Context, Result};
 use std::io::Write;
 
@@ -13,10 +13,11 @@ pub fn run(purge: bool, yes: bool, json: bool) -> Result<()> {
     let exe = std::env::current_exe().context("resolving current executable")?;
     let home = dirs::home_dir().ok_or_else(|| anyhow!("cannot determine home directory"))?;
 
-    if is_cargo_install(&exe, &home) {
+    if let Some(install) = cargo_install(&exe, &home) {
         return Err(anyhow!(
-            "{} was installed via cargo; run `cargo uninstall aish` instead",
-            exe.display()
+            "{} was installed via cargo; run `cargo uninstall{} aish` instead",
+            exe.display(),
+            install.root_arg()
         ));
     }
 

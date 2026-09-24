@@ -16,6 +16,10 @@ use wiremock::{Mock, MockServer, ResponseTemplate};
 
 const CURRENT: &str = env!("CARGO_PKG_VERSION");
 
+/// cargo's `.crates2.json` for a `cargo install --root` of aish.
+const CRATES2_AISH: &str =
+    r#"{"installs":{"aish 0.9.0 (git+https://github.com/daaquan/aish#1)":{"bins":["aish"]}}}"#;
+
 /// Copy the built `aish` into `<dir>/<sub>/aish` and return the copy's path.
 ///
 /// Copies via a spawned `cp` instead of `std::fs::copy`: an in-process copy
@@ -40,7 +44,9 @@ fn copy_bin(dir: &Path, sub: &str) -> PathBuf {
 fn run(bin: &Path, home: &Path, server: Option<&str>, args: &[&str]) -> std::process::Output {
     let mut cmd = Command::new(bin);
     cmd.env("HOME", home).args(args).stdin(Stdio::null());
-    cmd.env_remove("AISH_HOME");
+    // rustup sets CARGO_HOME for everything cargo runs, tests included; a
+    // temp dir under it would make aish treat the copy as a cargo install.
+    cmd.env_remove("AISH_HOME").env_remove("CARGO_HOME");
     if let Some(uri) = server {
         cmd.env("AISH_UPDATE_API_BASE", uri)
             .env("AISH_UPDATE_DOWNLOAD_BASE", uri);
@@ -187,6 +193,32 @@ async fn update_refuses_cargo_installed_binary() {
 
 #[cfg_attr(not(debug_assertions), ignore = "AISH_UPDATE_* hooks are debug-only")]
 #[tokio::test(flavor = "multi_thread")]
+async fn update_refuses_cargo_root_install() {
+    let home = tempdir().unwrap();
+    let bin = copy_bin(home.path(), "tools/bin");
+    let root = home.path().join("tools");
+    std::fs::write(root.join(".crates2.json"), CRATES2_AISH).unwrap();
+    let before = std::fs::read(&bin).unwrap();
+    let server = MockServer::start().await;
+    mock_release(&server, "v99.0.0", b"\x7fELF x").await;
+
+    let out = run(&bin, home.path(), Some(&server.uri()), &["update"]);
+
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(&format!("cargo install --root {}", root.display())),
+        "stderr should name the install root: {stderr}"
+    );
+    assert_eq!(
+        std::fs::read(&bin).unwrap(),
+        before,
+        "binary must be untouched"
+    );
+}
+
+#[cfg_attr(not(debug_assertions), ignore = "AISH_UPDATE_* hooks are debug-only")]
+#[tokio::test(flavor = "multi_thread")]
 async fn update_version_flag_pins_a_specific_tag() {
     let home = tempdir().unwrap();
     let bin = copy_bin(home.path(), "bin");
@@ -290,6 +322,7 @@ fn uninstall_purge_refuses_aish_home_outside_home() {
     let out = cmd
         .env("HOME", home.path())
         .env("AISH_HOME", outside.path())
+        .env_remove("CARGO_HOME")
         .args(["uninstall", "--yes", "--purge"])
         .stdin(Stdio::null())
         .output()
@@ -311,6 +344,47 @@ fn uninstall_refuses_cargo_installed_binary() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
         stderr.contains("cargo"),
+        "stderr should hint at cargo: {stderr}"
+    );
+    assert!(bin.exists());
+}
+
+#[test]
+fn uninstall_refuses_cargo_root_install() {
+    let home = tempdir().unwrap();
+    let bin = copy_bin(home.path(), "tools/bin");
+    let root = home.path().join("tools");
+    std::fs::write(root.join(".crates2.json"), CRATES2_AISH).unwrap();
+
+    let out = run(&bin, home.path(), None, &["uninstall", "--yes"]);
+
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains(&format!("cargo uninstall --root {} aish", root.display())),
+        "stderr should name the install root: {stderr}"
+    );
+    assert!(bin.exists());
+}
+
+#[test]
+fn uninstall_refuses_binary_under_cargo_home() {
+    let home = tempdir().unwrap();
+    let cargo_home = tempdir().unwrap();
+    let bin = copy_bin(cargo_home.path(), "bin");
+
+    let out = Command::new(&bin)
+        .env("HOME", home.path())
+        .env("CARGO_HOME", cargo_home.path())
+        .args(["uninstall", "--yes"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("cargo uninstall aish"),
         "stderr should hint at cargo: {stderr}"
     );
     assert!(bin.exists());

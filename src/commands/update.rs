@@ -8,7 +8,7 @@
 
 use crate::commands::emit_json;
 use crate::update::{
-    asset_name, download_url, endpoint_base, is_cargo_install, is_newer, looks_like_binary,
+    asset_name, cargo_install, download_url, endpoint_base, is_newer, looks_like_binary,
     normalize_tag, parse_version, replace_binary,
 };
 use anyhow::{anyhow, Context, Result};
@@ -70,12 +70,13 @@ pub async fn run(check: bool, version: Option<String>, json: bool) -> Result<()>
 
     let exe = std::env::current_exe().context("resolving current executable")?;
     let home = dirs::home_dir().ok_or_else(|| anyhow!("cannot determine home directory"))?;
-    if is_cargo_install(&exe, &home) {
+    if let Some(install) = cargo_install(&exe, &home) {
         // Not `cargo install aish`: no `aish` crate is published on crates.io,
         // so that name would install whatever package claims it.
         return Err(anyhow!(
-            "{} was installed via cargo; run `cargo install --git https://github.com/{}` to update instead",
+            "{} was installed via cargo; run `cargo install{} --git https://github.com/{}` to update instead",
             exe.display(),
+            install.root_arg(),
             crate::update::REPO
         ));
     }

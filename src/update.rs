@@ -4,7 +4,7 @@
 //! replacement. Pure functions where possible; the network and CLI glue
 //! live in `commands::update`.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// GitHub repository the release assets come from.
 pub const REPO: &str = "daaquan/aish";
@@ -112,10 +112,110 @@ pub fn looks_like_binary(bytes: &[u8]) -> bool {
     bytes.len() >= 4 && MAGICS.iter().any(|m| bytes.starts_with(m))
 }
 
-/// True if the executable lives under `~/.cargo` — installed via
-/// `cargo install`, so self-update/uninstall should defer to cargo.
-pub fn is_cargo_install(exe: &Path, home: &Path) -> bool {
-    exe.starts_with(home.join(".cargo"))
+/// How the running executable was found to be managed by `cargo install`.
+#[derive(Debug, PartialEq, Eq)]
+pub enum CargoInstall {
+    /// Under cargo's home (`$CARGO_HOME`, or `~/.cargo` while that is unset),
+    /// the root cargo uses when given none.
+    Home,
+    /// In `<root>/bin` of an explicit `cargo install --root <root>` (or
+    /// `$CARGO_INSTALL_ROOT`), found via cargo's install metadata there; or
+    /// under `~/.cargo` while `$CARGO_HOME` points elsewhere.
+    Root(PathBuf),
+}
+
+impl CargoInstall {
+    /// ` --root <root>` for a [`CargoInstall::Root`] install, else empty:
+    /// cargo only finds the install again when pointed at the same root.
+    pub fn root_arg(&self) -> String {
+        match self {
+            CargoInstall::Home => String::new(),
+            CargoInstall::Root(root) => {
+                let root = root.display().to_string();
+                // Double-quote a root a shell would split or unescape (spaces,
+                // common on Windows; backslashes under Git Bash): sh, cmd and
+                // PowerShell all read "<root>" as one argument.
+                let plain = |c: char| c.is_alphanumeric() || "/._-+:~".contains(c);
+                if root.chars().all(plain) {
+                    format!(" --root {root}")
+                } else {
+                    format!(" --root \"{root}\"")
+                }
+            }
+        }
+    }
+}
+
+/// `Some` if the executable was installed via `cargo install`, so
+/// self-update/uninstall should defer to cargo: replacing or deleting it
+/// would leave cargo's install metadata describing a binary that is gone.
+pub fn cargo_install(exe: &Path, home: &Path) -> Option<CargoInstall> {
+    let cargo_home = std::env::var_os("CARGO_HOME");
+    cargo_install_with(exe, home, cargo_home.as_deref().map(Path::new))
+}
+
+/// [`cargo_install`] with `$CARGO_HOME` as a parameter, so every case is
+/// unit-tested without touching the environment.
+fn cargo_install_with(exe: &Path, home: &Path, cargo_home: Option<&Path>) -> Option<CargoInstall> {
+    // cargo treats an empty $CARGO_HOME as unset; as a prefix it would match
+    // every path.
+    let cargo_home = cargo_home.filter(|h| !h.as_os_str().is_empty());
+    let home_cargo = home.join(".cargo");
+    if cargo_home.map_or(exe.starts_with(&home_cargo), |h| exe.starts_with(h)) {
+        return Some(CargoInstall::Home);
+    }
+    // Still cargo's, but with $CARGO_HOME pointing elsewhere a plain
+    // `cargo uninstall aish` looks there and finds nothing.
+    if exe.starts_with(&home_cargo) {
+        return Some(CargoInstall::Root(home_cargo));
+    }
+    // `cargo install --root <root>` puts binaries in `<root>/bin` and records
+    // them in `<root>`. Checking that the record names this binary keeps an
+    // install.sh copy in /usr/local/bin apart from cargo tools under /usr/local.
+    let bin = exe.file_name()?.to_str()?;
+    let bin_dir = exe.parent()?;
+    if bin_dir.file_name()? != "bin" {
+        return None;
+    }
+    let root = bin_dir.parent()?;
+    // A missing or unreadable file reads as empty, which lists nothing.
+    let read = |name| std::fs::read_to_string(root.join(name)).unwrap_or_default();
+    (crates2_json_lists(&read(".crates2.json"), bin)
+        || crates_toml_lists(&read(".crates.toml"), bin))
+    .then(|| CargoInstall::Root(root.to_path_buf()))
+}
+
+/// True if cargo's `.crates2.json` records `bin` for any installed package:
+/// `{"installs": {"<pkg id>": {"bins": ["aish"], ...}}}`. Garbled JSON lists
+/// nothing.
+fn crates2_json_lists(text: &str, bin: &str) -> bool {
+    #[derive(serde::Deserialize)]
+    struct Crates2 {
+        installs: std::collections::BTreeMap<String, Install>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Install {
+        #[serde(default)]
+        bins: Vec<String>,
+    }
+    serde_json::from_str::<Crates2>(text)
+        .is_ok_and(|c| c.installs.values().any(|i| i.bins.iter().any(|b| b == bin)))
+}
+
+/// True if cargo's older `.crates.toml` records `bin` in its `[v1]` table:
+/// `"<pkg id>" = ["aish"]`. A textual check rather than a TOML dependency:
+/// package ids always contain spaces (`name version (source)`), so the only
+/// quoted string in the table that can equal a bin name is a listed bin.
+fn crates_toml_lists(text: &str, bin: &str) -> bool {
+    let mut in_v1 = false;
+    for line in text.lines().map(str::trim) {
+        if line.starts_with('[') {
+            in_v1 = line == "[v1]";
+        } else if in_v1 && line.split('"').skip(1).step_by(2).any(|s| s == bin) {
+            return true;
+        }
+    }
+    false
 }
 
 /// Atomically replace `target` with `bytes`: write a sibling temp file,
@@ -272,18 +372,182 @@ mod tests {
         assert!(!looks_like_binary(b"Not Found"));
     }
 
+    const CRATES2_AISH: &str = r#"{"installs":{"aish 0.9.0 (git+https://github.com/daaquan/aish#298f3704)":{"version_req":null,"bins":["aish"],"features":[],"all_features":false,"no_default_features":false,"profile":"release","target":"x86_64-unknown-linux-gnu","rustc":"rustc 1.81.0"}}}"#;
+    const CRATES_TOML_AISH: &str = "[v1]\n\
+        \"aish 0.9.0 (git+https://github.com/daaquan/aish#298f3704)\" = [\"aish\"]\n\
+        \"ripgrep 14.1.0 (registry+https://github.com/rust-lang/crates.io-index)\" = [\"rg\"]\n";
+
+    /// A `<root>/bin` dir holding cargo metadata `files` in `<root>`, and the
+    /// path of `bin` inside it (the binary itself need not exist).
+    fn install_root(bin: &str, files: &[(&str, &str)]) -> (tempfile::TempDir, PathBuf) {
+        let root = tempfile::tempdir().unwrap();
+        std::fs::create_dir(root.path().join("bin")).unwrap();
+        for (name, body) in files {
+            std::fs::write(root.path().join(name), body).unwrap();
+        }
+        let exe = root.path().join("bin").join(bin);
+        (root, exe)
+    }
+
     #[test]
-    fn detects_cargo_installed_binaries() {
-        let home = PathBuf::from("/home/u");
-        assert!(is_cargo_install(
-            Path::new("/home/u/.cargo/bin/aish"),
-            &home
-        ));
-        assert!(!is_cargo_install(Path::new("/usr/local/bin/aish"), &home));
-        assert!(!is_cargo_install(
-            Path::new("/home/u/.local/bin/aish"),
-            &home
-        ));
+    fn detects_binaries_under_home_cargo() {
+        let home = Path::new("/home/u");
+        let exe = Path::new("/home/u/.cargo/bin/aish");
+        assert_eq!(
+            cargo_install_with(exe, home, None),
+            Some(CargoInstall::Home)
+        );
+        assert_eq!(
+            cargo_install_with(exe, home, Some(Path::new("/home/u/.cargo"))),
+            Some(CargoInstall::Home)
+        );
+        // ~/.cargo still counts when $CARGO_HOME points elsewhere, but cargo
+        // then only finds it via `--root ~/.cargo`.
+        assert_eq!(
+            cargo_install_with(exe, home, Some(Path::new("/usr/local/cargo"))),
+            Some(CargoInstall::Root(PathBuf::from("/home/u/.cargo")))
+        );
+    }
+
+    #[test]
+    fn empty_cargo_home_counts_as_unset() {
+        let home = Path::new("/home/u");
+        assert_eq!(
+            cargo_install_with(
+                Path::new("/home/u/.cargo/bin/aish"),
+                home,
+                Some(Path::new(""))
+            ),
+            Some(CargoInstall::Home)
+        );
+        let (_root, exe) = install_root("aish", &[]);
+        assert_eq!(cargo_install_with(&exe, home, Some(Path::new(""))), None);
+    }
+
+    #[test]
+    fn detects_binaries_under_cargo_home_env() {
+        // The official rust Docker image sets CARGO_HOME=/usr/local/cargo.
+        assert_eq!(
+            cargo_install_with(
+                Path::new("/usr/local/cargo/bin/aish"),
+                Path::new("/root"),
+                Some(Path::new("/usr/local/cargo"))
+            ),
+            Some(CargoInstall::Home)
+        );
+    }
+
+    #[test]
+    fn unrelated_cargo_home_is_not_a_cargo_install() {
+        let (_root, exe) = install_root("aish", &[]);
+        assert_eq!(
+            cargo_install_with(&exe, Path::new("/home/u"), Some(Path::new("/opt/cargo"))),
+            None
+        );
+    }
+
+    #[test]
+    fn detects_root_installs_via_crates2_json() {
+        let (root, exe) = install_root("aish", &[(".crates2.json", CRATES2_AISH)]);
+        assert_eq!(
+            cargo_install_with(&exe, Path::new("/home/u"), None),
+            Some(CargoInstall::Root(root.path().to_path_buf()))
+        );
+    }
+
+    #[test]
+    fn detects_root_installs_via_crates_toml() {
+        let (root, exe) = install_root("aish", &[(".crates.toml", CRATES_TOML_AISH)]);
+        assert_eq!(
+            cargo_install_with(&exe, Path::new("/home/u"), None),
+            Some(CargoInstall::Root(root.path().to_path_buf()))
+        );
+        // A garbled .crates2.json does not hide a valid .crates.toml.
+        let (root, exe) = install_root(
+            "aish",
+            &[
+                (".crates2.json", "{\"installs\":"),
+                (".crates.toml", CRATES_TOML_AISH),
+            ],
+        );
+        assert_eq!(
+            cargo_install_with(&exe, Path::new("/home/u"), None),
+            Some(CargoInstall::Root(root.path().to_path_buf()))
+        );
+    }
+
+    #[test]
+    fn root_installs_match_the_exe_file_name() {
+        // Windows records the bin with its extension.
+        let json = CRATES2_AISH.replace("[\"aish\"]", "[\"aish.exe\"]");
+        let (root, exe) = install_root("aish.exe", &[(".crates2.json", &json)]);
+        assert_eq!(
+            cargo_install_with(&exe, Path::new("/home/u"), None),
+            Some(CargoInstall::Root(root.path().to_path_buf()))
+        );
+        let (_root, exe) = install_root("aish.exe", &[(".crates2.json", CRATES2_AISH)]);
+        assert_eq!(cargo_install_with(&exe, Path::new("/home/u"), None), None);
+    }
+
+    #[test]
+    fn root_metadata_that_does_not_list_aish_is_not_a_cargo_install() {
+        // install.sh put aish in /usr/local/bin, next to cargo tools installed
+        // with `--root /usr/local`. The package id mentions aish; no bin is it.
+        let json = r#"{"installs":{"aish-helper 1.0.0 (git+https://github.com/daaquan/aish#1)":{"bins":["aish-helper"]},"ripgrep 14.1.0 (registry+https://github.com/rust-lang/crates.io-index)":{"bins":["rg"]}}}"#;
+        let toml = "[v1]\n\
+            \"aish-helper 1.0.0 (git+https://github.com/daaquan/aish#1)\" = [\"aish-helper\"]\n\
+            \"ripgrep 14.1.0 (registry+https://github.com/rust-lang/crates.io-index)\" = [\"rg\"]\n";
+        let (_root, exe) = install_root("aish", &[(".crates2.json", json), (".crates.toml", toml)]);
+        assert_eq!(cargo_install_with(&exe, Path::new("/home/u"), None), None);
+    }
+
+    #[test]
+    fn missing_or_garbled_root_metadata_is_not_a_cargo_install() {
+        let home = Path::new("/home/u");
+        let (_root, exe) = install_root("aish", &[]);
+        assert_eq!(cargo_install_with(&exe, home, None), None);
+
+        let (_root, exe) = install_root(
+            "aish",
+            &[
+                (".crates2.json", "{\"installs\": [\"aish\"]}"),
+                // `aish` outside the [v1] table is not an install record.
+                (".crates.toml", "aish\n[v2]\n\"x 1.0.0 (y)\" = [\"aish\"]\n"),
+            ],
+        );
+        assert_eq!(cargo_install_with(&exe, home, None), None);
+
+        // Not UTF-8: unreadable, so it lists nothing even though it names aish.
+        let (root, exe) = install_root("aish", &[]);
+        let mut bytes = b"\xff\xfe".to_vec();
+        bytes.extend_from_slice(CRATES_TOML_AISH.as_bytes());
+        std::fs::write(root.path().join(".crates.toml"), bytes).unwrap();
+        assert_eq!(cargo_install_with(&exe, home, None), None);
+    }
+
+    #[test]
+    fn root_installs_sit_directly_in_root_bin() {
+        let (root, _exe) = install_root("aish", &[(".crates2.json", CRATES2_AISH)]);
+        let exe = root.path().join("libexec").join("aish");
+        assert_eq!(cargo_install_with(&exe, Path::new("/home/u"), None), None);
+    }
+
+    #[test]
+    fn root_arg_names_the_root_only_for_root_installs() {
+        assert_eq!(CargoInstall::Home.root_arg(), "");
+        assert_eq!(
+            CargoInstall::Root(PathBuf::from("/opt/tools")).root_arg(),
+            " --root /opt/tools"
+        );
+        // Quoted where a shell would split or unescape it.
+        assert_eq!(
+            CargoInstall::Root(PathBuf::from("/opt/my tools")).root_arg(),
+            " --root \"/opt/my tools\""
+        );
+        assert_eq!(
+            CargoInstall::Root(PathBuf::from(r"C:\Users\me\tools")).root_arg(),
+            r#" --root "C:\Users\me\tools""#
+        );
     }
 
     #[test]
