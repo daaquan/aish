@@ -84,22 +84,24 @@ fn default_commit() -> CommitConfig {
 }
 
 impl Config {
-    /// Default path: `~/.aish/config.yaml`, override with `$AISH_CONFIG`.
+    /// Default path: `config.yaml` in the data dir (`$AISH_HOME`, default
+    /// `~/.aish`); `$AISH_CONFIG` overrides the file itself.
     pub fn default_path() -> PathBuf {
         if let Ok(p) = std::env::var("AISH_CONFIG") {
             return PathBuf::from(p);
         }
-        let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-        home.join(".aish").join("config.yaml")
+        crate::paths::default_data_dir().join("config.yaml")
     }
 
     pub fn load() -> Result<Self, ConfigError> {
         let path = Self::default_path();
         if !path.exists() {
             // First run with the default path: lay down the template so the
-            // tool works out of the box. A custom $AISH_CONFIG pointed at a
-            // missing file is the user naming a specific file — don't create a
-            // different one for them; surface NotFound instead.
+            // tool works out of the box. That includes a custom $AISH_HOME,
+            // which names a dir for aish to keep its files in, like ~/.aish.
+            // A custom $AISH_CONFIG pointed at a missing file is the user
+            // naming a specific file — don't create a different one for them;
+            // surface NotFound instead.
             if std::env::var_os("AISH_CONFIG").is_none()
                 && Self::write_template(&path, false).is_ok()
             {

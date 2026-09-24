@@ -1,17 +1,9 @@
 // SPDX-License-Identifier: MIT
-//! Core logic for `aish uninstall`: data-dir resolution, purge-path safety
-//! validation, and directory sizing. The confirmation prompt and CLI glue
-//! live in `commands::uninstall`.
+//! Core logic for `aish uninstall`: purge-path safety validation and
+//! directory sizing. The data dir itself comes from [`crate::paths`]; the
+//! confirmation prompt and CLI glue live in `commands::uninstall`.
 
-use std::path::{Path, PathBuf};
-
-/// Data dir to purge: `$AISH_HOME` if set, else `~/.aish`.
-pub fn data_dir(home: &Path) -> PathBuf {
-    match std::env::var("AISH_HOME") {
-        Ok(p) if !p.trim().is_empty() => PathBuf::from(p),
-        _ => home.join(".aish"),
-    }
-}
+use std::path::Path;
 
 /// Guard before recursive delete: reject empty, root, home itself, or any
 /// path that is not strictly inside `home`. Returns the validated path.
@@ -75,26 +67,6 @@ pub fn human_size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serial_test::serial;
-
-    #[test]
-    #[serial(aish_home)]
-    fn data_dir_defaults_to_dot_aish_under_home() {
-        std::env::remove_var("AISH_HOME");
-        assert_eq!(
-            data_dir(Path::new("/home/u")),
-            PathBuf::from("/home/u/.aish")
-        );
-    }
-
-    #[test]
-    #[serial(aish_home)]
-    fn data_dir_honors_aish_home_env() {
-        std::env::set_var("AISH_HOME", "/srv/aish-data");
-        let got = data_dir(Path::new("/home/u"));
-        std::env::remove_var("AISH_HOME");
-        assert_eq!(got, PathBuf::from("/srv/aish-data"));
-    }
 
     #[test]
     fn purge_rejects_dangerous_paths() {

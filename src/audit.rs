@@ -14,13 +14,13 @@ pub struct AuditEntry {
     pub decision: String,
 }
 
-/// Path to the default audit log (`~/.aish/audit.log`).
+/// Path to the default audit log: `audit.log` in the data dir (`$AISH_HOME`,
+/// default `~/.aish`).
 pub fn log_path() -> PathBuf {
-    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-    home.join(".aish").join("audit.log")
+    crate::paths::default_data_dir().join("audit.log")
 }
 
-/// Append one JSONL record to the default audit log (`~/.aish/audit.log`).
+/// Append one JSONL record to the default audit log ([`log_path`]).
 pub fn record(entry: &AuditEntry) -> std::io::Result<()> {
     record_to(&log_path(), entry)
 }

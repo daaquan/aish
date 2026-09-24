@@ -4,7 +4,8 @@
 //! confirmation prompt and CLI output.
 
 use crate::commands::emit_json;
-use crate::uninstall::{data_dir, dir_size, human_size, validate_purge_path};
+use crate::paths::data_dir;
+use crate::uninstall::{dir_size, human_size, validate_purge_path};
 use crate::update::cargo_install;
 use anyhow::{anyhow, Context, Result};
 use std::io::Write;

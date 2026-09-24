@@ -61,10 +61,10 @@ pub fn request_key(provider: &str, endpoint: &str, model: &str, messages: &[Mess
     format!("{:016x}", fnv1a(buf.as_bytes()))
 }
 
-/// Default cache directory (`~/.aish/cache`), mirroring the audit log location.
+/// Default cache directory: `cache` in the data dir (`$AISH_HOME`, default
+/// `~/.aish`), next to the audit log.
 pub fn cache_dir() -> PathBuf {
-    let home = dirs::home_dir().unwrap_or_else(|| PathBuf::from("."));
-    home.join(".aish").join("cache")
+    crate::paths::default_data_dir().join("cache")
 }
 
 fn entry_path(dir: &Path, key: &str) -> PathBuf {

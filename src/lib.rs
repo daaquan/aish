@@ -6,6 +6,7 @@ pub mod commands;
 pub mod config;
 pub mod editor;
 pub mod git;
+pub mod paths;
 pub mod provider;
 pub mod tool;
 pub mod uninstall;

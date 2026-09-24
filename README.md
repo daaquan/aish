@@ -143,7 +143,10 @@ aish models list      # model aliases and what they resolve to
 
 Configure these in `~/.aish/config.yaml` (override the path with `$AISH_CONFIG`);
 `aish config check` validates the file and `--ping` verifies each provider is
-reachable with its credentials.
+reachable with its credentials. Set `$AISH_HOME` to an absolute path to move
+the whole data dir (config, cache, and audit log) somewhere other than
+`~/.aish` (a relative value is ignored); `$AISH_CONFIG` still takes precedence
+for the config file.
 
 ### JSON output (CI/CD)
 
@@ -178,8 +181,8 @@ aish update              # self-update to the latest GitHub release
 aish update --check      # report only; nonzero exit when outdated (CI gate)
 aish update --version 0.5.0   # pin a specific release tag
 
-aish uninstall           # remove the binary (asks first; keeps ~/.aish)
-aish uninstall --purge   # also delete ~/.aish (config, cache, audit log)
+aish uninstall           # remove the binary (asks first; keeps the data dir)
+aish uninstall --purge   # also delete the data dir ($AISH_HOME, default ~/.aish): config, cache, audit log
 aish uninstall --yes     # skip the confirmation prompt
 ```
 

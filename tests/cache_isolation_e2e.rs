@@ -65,6 +65,7 @@ fn run_print(home: &Path, env: &[(&str, &str)]) -> Value {
     let out = Command::cargo_bin("aish")
         .unwrap()
         .env("HOME", home)
+        .env_remove("AISH_HOME")
         .env_remove("AISH_CONFIG")
         .env_remove("AISH_PROVIDER")
         .env_remove("AISH_MOCK_REPLY")

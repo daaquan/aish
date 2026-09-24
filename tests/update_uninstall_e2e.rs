@@ -300,6 +300,44 @@ fn uninstall_purge_removes_data_dir_too() {
 }
 
 #[test]
+fn uninstall_purge_removes_config_written_under_aish_home() {
+    let home = tempdir().unwrap();
+    let bin = copy_bin(home.path(), "bin");
+    let data = home.path().join("custom-data");
+    let aish = |args: &[&str]| {
+        let out = Command::new(&bin)
+            .env("HOME", home.path())
+            .env("AISH_HOME", &data)
+            .env_remove("AISH_CONFIG")
+            .env_remove("CARGO_HOME")
+            .args(args)
+            .stdin(Stdio::null())
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "aish {args:?} failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+
+    // The first run lays down the template config, where API keys go.
+    aish(&["models", "list"]);
+    assert!(
+        data.join("config.yaml").exists(),
+        "config not in $AISH_HOME"
+    );
+
+    aish(&["uninstall", "--yes", "--purge"]);
+
+    assert!(!data.exists(), "$AISH_HOME should be purged");
+    assert!(
+        !home.path().join(".aish").exists(),
+        "nothing may be left behind in ~/.aish"
+    );
+}
+
+#[test]
 fn uninstall_without_yes_aborts_on_eof() {
     let home = tempdir().unwrap();
     let bin = copy_bin(home.path(), "bin");
@@ -375,6 +413,7 @@ fn uninstall_refuses_binary_under_cargo_home() {
 
     let out = Command::new(&bin)
         .env("HOME", home.path())
+        .env_remove("AISH_HOME")
         .env("CARGO_HOME", cargo_home.path())
         .args(["uninstall", "--yes"])
         .stdin(Stdio::null())

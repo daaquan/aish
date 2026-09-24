@@ -26,7 +26,8 @@ fn aish(cfg_dir: &std::path::Path, cfg_path: &std::path::Path) -> Command {
     cmd.env("AISH_CONFIG", cfg_path)
         .env("AISH_PROVIDER", "mock")
         .env("AISH_MOCK_REPLY", "Clone `cfg` before the move.")
-        .env("HOME", cfg_dir); // keep audit log inside the temp dir
+        .env("HOME", cfg_dir) // keep audit log inside the temp dir
+        .env_remove("AISH_HOME");
     cmd
 }
 
