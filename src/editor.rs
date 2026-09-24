@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-use crate::config::write_new_secure;
+use crate::paths::write_new_owner_only;
 use std::collections::hash_map::RandomState;
 use std::hash::{BuildHasher, Hasher};
 use std::io;
@@ -83,7 +83,7 @@ fn buffer_name(seq: u64) -> String {
 
 /// Write `message` to a new file in `dir`, owner-only (`0600`) on unix, and
 /// return its path. The temp dir is usually shared (`/tmp`), so the name is
-/// claimed with an exclusive create ([`write_new_secure`]) rather than
+/// claimed with an exclusive create ([`write_new_owner_only`]) rather than
 /// assumed free: a file or symlink someone else put there first is never
 /// written through, and the next name from `next_name` is tried instead, up
 /// to [`CREATE_ATTEMPTS`] names in all.
@@ -95,7 +95,7 @@ fn create_buffer(
     let mut attempt = 1;
     loop {
         let path = dir.join(next_name());
-        match write_new_secure(&path, message) {
+        match write_new_owner_only(&path, message) {
             Ok(()) => return Ok(path),
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists && attempt < CREATE_ATTEMPTS => {
                 attempt += 1

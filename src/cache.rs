@@ -79,7 +79,7 @@ pub fn get(dir: &Path, key: &str) -> Option<String> {
 /// Store `value` for `key`, creating the cache directory if needed. Entries
 /// are owner-only, like the config: a response can contain the user's code.
 pub fn put(dir: &Path, key: &str, value: &str) -> std::io::Result<()> {
-    crate::config::write_secure(&entry_path(dir, key), value)
+    crate::paths::write_owner_only(&entry_path(dir, key), value)
 }
 
 /// Entry count and total size in bytes of the cache directory.

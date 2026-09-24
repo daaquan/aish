@@ -2,9 +2,8 @@
 //! `aish setup` — interactive configuration wizard, plus `--repair` to restore
 //! the initial template config.
 use crate::commands::emit_json;
-use crate::config::{
-    write_new_secure, write_secure, CommitConfig, Config, ModelAlias, ProviderConfig,
-};
+use crate::config::{CommitConfig, Config, ModelAlias, ProviderConfig};
+use crate::paths::{write_new_owner_only, write_owner_only};
 use anyhow::{anyhow, Context, Result};
 use std::collections::BTreeMap;
 use std::io::{self, IsTerminal, Write};
@@ -90,7 +89,7 @@ pub fn run(repair: bool, json: bool) -> Result<()> {
 fn repair_config(json: bool) -> Result<()> {
     let path = Config::default_path();
     let backup = back_up_existing(&path)?;
-    write_secure(&path, Config::template())
+    write_owner_only(&path, Config::template())
         .with_context(|| format!("writing config to {}", path.display()))?;
     report_written(&path, backup.as_deref(), &[], None, json);
     Ok(())
@@ -146,7 +145,8 @@ fn wizard(json: bool) -> Result<()> {
 
     let path = Config::default_path();
     let backup = back_up_existing(&path)?;
-    write_secure(&path, &yaml).with_context(|| format!("writing config to {}", path.display()))?;
+    write_owner_only(&path, &yaml)
+        .with_context(|| format!("writing config to {}", path.display()))?;
 
     let names: Vec<String> = enabled.iter().map(|p| p.name.clone()).collect();
     report_written(&path, backup.as_deref(), &names, Some(&default_alias), json);
@@ -226,7 +226,7 @@ fn back_up_existing(path: &Path) -> Result<Option<PathBuf>> {
             bak.push(format!(".{n}"));
         }
         let bak = PathBuf::from(bak);
-        match write_new_secure(&bak, &contents) {
+        match write_new_owner_only(&bak, &contents) {
             Ok(()) => return Ok(Some(bak)),
             Err(e) if e.kind() == io::ErrorKind::AlreadyExists => n += 1,
             Err(e) => {

@@ -35,16 +35,12 @@ pub fn record_to(path: &Path, entry: &AuditEntry) -> std::io::Result<()> {
         .as_secs();
     let mut value = serde_json::to_value(entry).unwrap();
     value["ts"] = serde_json::json!(ts);
-    let mut opts = std::fs::OpenOptions::new();
-    opts.create(true).append(true);
     // Owner-only from creation, like everything else in the data dir. An
     // existing log keeps its mode: it holds metadata only, never a secret.
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::OpenOptionsExt;
-        opts.mode(0o600);
-    }
-    let mut f = opts.open(path)?;
+    let mut f = crate::paths::owner_only_options()
+        .create(true)
+        .append(true)
+        .open(path)?;
     writeln!(f, "{value}")?;
     Ok(())
 }
