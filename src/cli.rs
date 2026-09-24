@@ -119,14 +119,16 @@ pub enum Command {
     /// Turn a natural-language description into a shell command and run it.
     ///
     /// The generated command is shown behind a confirm/edit gate before it
-    /// runs; `--yes` is the only path to no-prompt execution, and `--print`
-    /// emits the command without running it.
+    /// runs. Both `--yes` and the global `--json` flag skip that prompt and
+    /// run the command immediately; use `--print` to review the command
+    /// without running it.
     Run {
         /// Natural-language description of the desired command, e.g.
         /// `aish run delete all merged git branches`.
         #[arg(trailing_var_arg = true, required = true)]
         prompt: Vec<String>,
-        /// Skip the confirm prompt and run the command immediately.
+        /// Skip the confirm prompt and run the command immediately (the
+        /// global `--json` flag does too).
         #[arg(long, short = 'y')]
         yes: bool,
         /// Print the generated command and exit without running it.

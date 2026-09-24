@@ -120,11 +120,12 @@ aish run --yes restart the dev server     # skip the prompt and run immediately
 ```
 
 Generating and running an arbitrary shell command has a high blast radius, so
-the command **never executes without an explicit gate**: the confirm prompt is
-the default, `--yes` is the only path to no-prompt execution, and `--print`
-emits the command without running it. The command runs via `sh -c` (so pipes,
-globs, and `&&` work) and `aish run` propagates its exit code; aborting or
-`--print` exits 0.
+by default the command **never executes without a confirm prompt**. Both
+`--yes` and the global `--json` flag skip that prompt and run the command
+immediately, so pass neither when the input comes from an untrusted source;
+use `--print` to review the command without running it. The command runs via
+`sh -c` (so pipes, globs, and `&&` work) and `aish run` propagates its exit
+code; aborting or `--print` exits 0.
 
 ## Providers & models
 
