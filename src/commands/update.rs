@@ -71,9 +71,12 @@ pub async fn run(check: bool, version: Option<String>, json: bool) -> Result<()>
     let exe = std::env::current_exe().context("resolving current executable")?;
     let home = dirs::home_dir().ok_or_else(|| anyhow!("cannot determine home directory"))?;
     if is_cargo_install(&exe, &home) {
+        // Not `cargo install aish`: no `aish` crate is published on crates.io,
+        // so that name would install whatever package claims it.
         return Err(anyhow!(
-            "{} was installed via cargo; run `cargo install aish` to update instead",
-            exe.display()
+            "{} was installed via cargo; run `cargo install --git https://github.com/{}` to update instead",
+            exe.display(),
+            crate::update::REPO
         ));
     }
 

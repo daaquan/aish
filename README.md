@@ -181,7 +181,8 @@ aish uninstall --yes     # skip the confirmation prompt
 ```
 
 Binaries installed via `cargo install` are detected and left alone — use
-`cargo install aish` / `cargo uninstall aish` there instead.
+`cargo install --git https://github.com/daaquan/aish` / `cargo uninstall aish`
+there instead.
 
 ## Contributing
 
