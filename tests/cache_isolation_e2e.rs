@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 //! A cached reply is only served to a request that would have got it anyway.
 //! One invocation with a crafted environment — the `AISH_PROVIDER=mock` hook,
-//! or `$AISH_CONFIG` pointing the same provider name at another server — must
-//! not plant the command a later plain `aish run --yes` executes. Providers
-//! here are OpenAI-compatible wiremock servers — no network.
+//! `$AISH_CONFIG` pointing the same provider name at another server, or a
+//! proxy variable — must not plant the command a later plain `aish run --yes`
+//! executes. Providers here are OpenAI-compatible wiremock servers — no
+//! network.
 //!
 //! Unix only: the cache is isolated through `$HOME`, which `dirs` ignores on
 //! Windows, so there these runs would share the developer's real cache.
@@ -58,12 +59,31 @@ fn mock(reply: &str) -> [(&str, &str); 2] {
     [("AISH_PROVIDER", "mock"), ("AISH_MOCK_REPLY", reply)]
 }
 
+/// Every variable reqwest's proxy matcher reads. Each run clears them, so the
+/// runner's own settings, such as a CI image's `no_proxy=localhost,127.0.0.1`,
+/// never decide which server answers, and a test sets exactly the ones it
+/// names.
+const PROXY_ENV: [&str; 9] = [
+    "ALL_PROXY",
+    "all_proxy",
+    "HTTP_PROXY",
+    "http_proxy",
+    "HTTPS_PROXY",
+    "https_proxy",
+    "NO_PROXY",
+    "no_proxy",
+    "REQUEST_METHOD",
+];
+
 /// `aish --json run --print` for a fixed prompt. Of aish's variables only
 /// `$HOME` and `env` are set, so `&[]` is a later plain invocation. Returns the
 /// JSON envelope.
 fn run_print(home: &Path, env: &[(&str, &str)]) -> Value {
-    let out = Command::cargo_bin("aish")
-        .unwrap()
+    let mut aish = Command::cargo_bin("aish").unwrap();
+    for var in PROXY_ENV {
+        aish.env_remove(var);
+    }
+    let out = aish
         .env("HOME", home)
         .env_remove("AISH_HOME")
         .env_remove("AISH_CONFIG")
@@ -143,5 +163,52 @@ async fn reply_from_another_endpoint_is_never_served_to_the_configured_one() {
     let plain = run_print(home.path(), &[]);
     assert_eq!(plain["command"], "ls");
     assert_eq!(plain["cached"], false);
+    assert_eq!(configured.received_requests().await.unwrap().len(), 1);
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn reply_through_a_proxy_is_never_served_to_a_direct_request() {
+    // One invocation's proxy answers a plain-http endpoint itself: reqwest
+    // sends it the whole URL (`POST http://127.0.0.1:<port>/chat/completions`),
+    // so a provider server can play the proxy. Every variable reqwest reads
+    // for an http URL, in both spellings.
+    for var in ["HTTP_PROXY", "http_proxy", "ALL_PROXY", "all_proxy"] {
+        let configured = provider_answering("ls").await;
+        let proxy = provider_answering(PLANTED).await;
+        let home = home_for(&configured.uri());
+
+        let planted = run_print(home.path(), &[(var, &proxy.uri())]);
+        assert_eq!(planted["command"], PLANTED, "{var} did not reach the proxy");
+
+        let plain = run_print(home.path(), &[]);
+        assert_eq!(plain["command"], "ls", "{var}");
+        assert_eq!(plain["cached"], false, "{var}");
+        assert_eq!(configured.received_requests().await.unwrap().len(), 1);
+    }
+}
+
+#[tokio::test(flavor = "multi_thread")]
+async fn reply_through_a_proxy_is_never_served_past_no_proxy() {
+    // The usual environment has a proxy but reaches the local endpoint
+    // directly; one invocation drops `NO_PROXY`, so the proxy answers instead.
+    let configured = provider_answering("ls").await;
+    let proxy = provider_answering(PLANTED).await;
+    let home = home_for(&configured.uri());
+    let proxy_uri = proxy.uri();
+    let usual = [
+        ("HTTP_PROXY", proxy_uri.as_str()),
+        ("NO_PROXY", "127.0.0.1"),
+    ];
+
+    assert_eq!(run_print(home.path(), &usual[..1])["command"], PLANTED);
+
+    let plain = run_print(home.path(), &usual);
+    assert_eq!(plain["command"], "ls");
+    assert_eq!(plain["cached"], false);
+
+    // A proxy setting that stays the same still gets cache hits.
+    let again = run_print(home.path(), &usual);
+    assert_eq!(again["command"], "ls");
+    assert_eq!(again["cached"], true);
     assert_eq!(configured.received_requests().await.unwrap().len(), 1);
 }

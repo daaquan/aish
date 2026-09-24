@@ -87,6 +87,18 @@ model provider you configure. Treat that as disclosure to a third party.
   `~/...`) and uses `~/.aish`, so in that case run `chmod 700 ~/.aish`.
   `aish cache clear` empties the cache; it asks first and treats
   non-interactive input as "no", so pass `--yes` when running it from a script.
+- **Cache keys** cover the provider name, its endpoint (`base_url`), the proxy
+  settings the request is sent with (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`
+  and `NO_PROXY` in either case, and whether `REQUEST_METHOD` is set, which
+  turns them off), the model, and every message, so one invocation's
+  `$AISH_CONFIG` or proxy variable does not decide what later ones are
+  served. aish never uses the operating system's proxy settings. The key does
+  not cover name resolution: where a plain-http `base_url`'s host name is
+  looked up in DNS, resolver variables such as glibc's `HOSTALIASES`,
+  `LOCALDOMAIN` and `RES_OPTIONS` can send one invocation's request, and so
+  the reply cached for later ones, to another server. An HTTPS endpoint's
+  certificate check rules that out, and an IP address or a name `/etc/hosts`
+  answers, such as `localhost`, is not affected.
 - **`aish run`** turns your prompt into a shell command and runs it after a
   confirm prompt. Read what is proposed before confirming. Both `--yes` and the
   global `--json` flag skip that prompt and run the command immediately, so
