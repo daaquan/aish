@@ -278,30 +278,42 @@ commit:
 /// Write `contents` to `path` (creating parent dirs), restricting it to the
 /// owner (`0600`) on unix since the file may hold plaintext API keys.
 ///
-/// The file is *created* 0600 rather than chmodded afterwards: writing first
-/// and tightening second leaves a window where the key is readable at the
-/// caller's umask. `mode()` only applies when the file is created, so an
-/// already-existing, looser file is tightened explicitly after the write.
-pub fn write_secure(path: &std::path::Path, contents: &str) -> std::io::Result<()> {
+/// The file is owner-only *before* anything is written to it (see
+/// [`open_owner_only`]): writing first and tightening second leaves a window
+/// where the key is readable by other local users.
+pub fn write_secure(path: &std::path::Path, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
     if let Some(parent) = path.parent() {
         std::fs::create_dir_all(parent)?;
     }
     #[cfg(unix)]
     {
         use std::io::Write;
-        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
-        let mut f = std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .mode(0o600)
-            .open(path)?;
-        f.write_all(contents.as_bytes())?;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        open_owner_only(path)?.write_all(contents.as_ref())?;
     }
     #[cfg(not(unix))]
     std::fs::write(path, contents)?;
     Ok(())
+}
+
+/// Open `path` truncated for writing, already restricted to `0600`.
+///
+/// `mode()` makes a new file 0600 from the start, never at the caller's umask.
+/// It only applies on creation, so an existing, looser file is tightened
+/// through the handle before the caller writes anything; if that fails
+/// (e.g. the file belongs to another user), nothing secret has been written.
+/// A descriptor another user opened while the old file was still readable
+/// keeps working — a mode change never revokes an open descriptor.
+#[cfg(unix)]
+fn open_owner_only(path: &std::path::Path) -> std::io::Result<std::fs::File> {
+    use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+    let f = std::fs::OpenOptions::new()
+        .create(true)
+        .write(true)
+        .truncate(true)
+        .mode(0o600)
+        .open(path)?;
+    f.set_permissions(std::fs::Permissions::from_mode(0o600))?;
+    Ok(f)
 }
 
 /// Expand `${VAR}` occurrences. Missing variable → empty string (validated later when the
@@ -330,31 +342,36 @@ mod tests {
 
     /// A config file may hold a plaintext API key, so it must never be
     /// readable by anyone but the owner — not even for the instant between
-    /// creating it and tightening its mode.
+    /// opening it and writing the key into it.
     #[cfg(unix)]
     #[test]
     fn write_secure_never_exposes_contents_to_other_users() {
-        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        use std::os::unix::fs::PermissionsExt;
+        let mode = |p: &std::path::Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
         let dir = tempfile::tempdir().unwrap();
 
-        // Fresh file: created 0600, never wider.
+        // Fresh file: 0600.
         let fresh = dir.path().join("nested").join("config.yaml");
         write_secure(&fresh, "providers:\n  openai: { api_key: sk-secret }\n").unwrap();
-        let mode = std::fs::metadata(&fresh).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "fresh config left at {mode:o}");
+        let m = mode(&fresh);
+        assert_eq!(m, 0o600, "fresh config left at {m:o}");
 
-        // Pre-existing world-readable file: tightened on overwrite.
+        // Pre-existing world-readable file (chmod, not umask-dependent): it is
+        // already 0600 once the handle the key is written through exists,
+        // i.e. before any byte of the new contents lands in it.
         let existing = dir.path().join("loose.yaml");
-        std::fs::OpenOptions::new()
-            .create(true)
-            .write(true)
-            .truncate(true)
-            .mode(0o644)
-            .open(&existing)
-            .unwrap();
-        write_secure(&existing, "providers: {}\n").unwrap();
-        let mode = std::fs::metadata(&existing).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode, 0o600, "existing config left at {mode:o}");
+        std::fs::write(&existing, "old").unwrap();
+        std::fs::set_permissions(&existing, std::fs::Permissions::from_mode(0o644)).unwrap();
+        assert_eq!(mode(&existing), 0o644, "fixture must start world-readable");
+        drop(open_owner_only(&existing).unwrap());
+        let m = mode(&existing);
+        assert_eq!(m, 0o600, "existing config at {m:o} before the write");
+
+        let body = "providers: {}\n";
+        write_secure(&existing, body).unwrap();
+        let m = mode(&existing);
+        assert_eq!(m, 0o600, "existing config left at {m:o}");
+        assert_eq!(std::fs::read_to_string(&existing).unwrap(), body);
     }
 
     #[test]
