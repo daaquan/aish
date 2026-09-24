@@ -31,7 +31,7 @@ interactive wizard that prompts for provider API keys (stored as plaintext or
 restore the template. Either one first backs up an existing config to the first
 free name of `config.yaml.bak`, `config.yaml.bak.1`, `config.yaml.bak.2`, …, so
 an earlier backup is never overwritten. Configure style, language, and model
-alias in `~/.aish/config.yaml`:
+alias in `config.yaml` in the data dir (`$AISH_HOME`, default `~/.aish`):
 
 ```yaml
 commit:
@@ -141,12 +141,14 @@ aish providers list   # configured providers
 aish models list      # model aliases and what they resolve to
 ```
 
-Configure these in `~/.aish/config.yaml` (override the path with `$AISH_CONFIG`);
-`aish config check` validates the file and `--ping` verifies each provider is
-reachable with its credentials. Set `$AISH_HOME` to an absolute path to move
-the whole data dir (config, cache, and audit log) somewhere other than
-`~/.aish` (a relative value is ignored); `$AISH_CONFIG` still takes precedence
-for the config file.
+Configure these in `config.yaml` in the data dir (`$AISH_HOME`, default
+`~/.aish`), or override the path with `$AISH_CONFIG`; `aish config check`
+validates the file and `--ping` verifies each provider is reachable with its
+credentials. Set `$AISH_HOME` to an absolute path to move the whole data dir
+(config, cache, and audit log) somewhere other than `~/.aish` (a relative
+value is ignored); `$AISH_CONFIG` still takes precedence for the config file.
+`aish uninstall --purge` only deletes a data dir inside your home directory
+(see [Updating & uninstalling](#updating--uninstalling)).
 
 ### JSON output (CI/CD)
 
@@ -186,13 +188,16 @@ aish uninstall --purge   # also delete the data dir ($AISH_HOME, default ~/.aish
 aish uninstall --yes     # skip the confirmation prompt
 ```
 
-`--purge` refuses a data dir whose path contains `..` or that, with
-symlinks resolved, is not strictly inside your home directory; the whole
-uninstall is then aborted and nothing is removed.
+The data dir must be inside your home directory for `--purge`: it refuses a
+data dir whose path contains `..` or that, with symlinks resolved, is not
+strictly inside your home directory. The whole uninstall is then aborted and
+nothing is removed, not even the binary. Run plain `aish uninstall` and delete
+that dir yourself.
 
 Binaries installed via `cargo install` are detected and left alone — use
 `cargo install --git https://github.com/daaquan/aish` / `cargo uninstall aish`
-there instead.
+there instead, adding `--root <root>` for an install made with
+`cargo install --root <root>` (aish prints the exact command).
 
 ## Contributing
 

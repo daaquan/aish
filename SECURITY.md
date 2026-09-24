@@ -53,9 +53,9 @@ Out of scope:
 - vulnerabilities in third-party crates — report upstream, though telling us
   so we can bump the dependency is welcome
 - attacks by someone who already runs code as you, controls your shell or the
-  environment variables an `aish` invocation sees, or can write files under
-  `~/.aish/` such as `config.yaml` or cache entries — anything that access
-  already lets them do directly
+  environment variables an `aish` invocation sees, or can write files in the
+  data dir (`$AISH_HOME`, default `~/.aish`) such as `config.yaml` or cache
+  entries — anything that access already lets them do directly
 
 In scope, though, is anything in aish that turns control over a single
 invocation, such as its environment variables, into an effect on later
@@ -68,19 +68,24 @@ builds), or one invocation planting a cache entry that later ones trust.
 aish sends the content you pass it (diffs, command output, prompts) to the
 model provider you configure. Treat that as disclosure to a third party.
 
-- **API keys** live in `~/.aish/config.yaml`, which aish writes with mode
-  `600`. Prefer environment variable interpolation
+- **API keys** live in `config.yaml` in the data dir (`$AISH_HOME`, default
+  `~/.aish`), or in the file `$AISH_CONFIG` names instead. aish writes it with
+  mode `600`. Prefer environment variable interpolation
   (`api_key: ${ANTHROPIC_API_KEY}`) over literal keys, and never commit the
   file.
-- **Audit log** (`~/.aish/audit.log`, JSONL) records metadata only — tool,
-  provider, model, token counts, and your decision. No prompt or response text,
-  no keys.
-- **Cache** (`~/.aish/cache/`) stores provider *responses* on disk, keyed by a
-  hash of the request. Responses can contain your code. On unix, aish creates
-  the data dir and `cache/` with mode `700`, and the files it writes there
-  with mode `600`. It never changes the mode of a directory that already
-  exists, so tighten a `~/.aish` created by an older version once:
-  `chmod 700 ~/.aish`. `aish cache clear` empties it; it asks first and treats
+- **Audit log** (`audit.log` in the data dir, JSONL) records metadata only —
+  tool, provider, model, token counts, and your decision. No prompt or
+  response text, no keys.
+- **Cache** (`cache/` in the data dir) stores provider *responses* on disk,
+  keyed by a hash of the request. Responses can contain your code. On unix,
+  aish creates the data dir and `cache/` with mode `700`, and the files it
+  writes there with mode `600`. It never changes the mode of a directory that
+  already exists, since a `$AISH_HOME` may be shared on purpose, so tighten a
+  data dir created by an older version, or an existing directory you pointed
+  `$AISH_HOME` at, yourself: `chmod 700 "${AISH_HOME:-$HOME/.aish}"`. aish
+  ignores a `$AISH_HOME` that is not an absolute path (such as a quoted
+  `~/...`) and uses `~/.aish`, so in that case run `chmod 700 ~/.aish`.
+  `aish cache clear` empties the cache; it asks first and treats
   non-interactive input as "no", so pass `--yes` when running it from a script.
 - **`aish run`** turns your prompt into a shell command and runs it after a
   confirm prompt. Read what is proposed before confirming. Both `--yes` and the

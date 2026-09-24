@@ -179,9 +179,10 @@ pub enum Command {
         #[arg(long)]
         version: Option<String>,
     },
-    /// Remove the aish binary (and optionally the ~/.aish data dir).
+    /// Remove the aish binary (and optionally the data dir: $AISH_HOME, default ~/.aish).
     Uninstall {
-        /// Also delete the data dir ($AISH_HOME, default ~/.aish): config, cache, audit log.
+        /// Also delete the data dir ($AISH_HOME, default ~/.aish): config, cache,
+        /// audit log. It must be inside your home directory, or nothing is removed.
         #[arg(long)]
         purge: bool,
         /// Skip the confirmation prompt.

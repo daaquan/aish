@@ -222,7 +222,8 @@ impl Config {
 
     /// Commented YAML template written on first run and by `aish setup --repair`.
     pub fn template() -> &'static str {
-        r#"# aish configuration (~/.aish/config.yaml)
+        r#"# aish configuration: config.yaml in the data dir ($AISH_HOME, default
+# ~/.aish), unless $AISH_CONFIG names another file.
 #
 # Only providers you leave uncommented are loaded. The default template keeps
 # Anthropic and local Ollama available, while other example providers are
