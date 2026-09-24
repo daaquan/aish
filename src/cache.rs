@@ -1,9 +1,10 @@
 // SPDX-License-Identifier: MIT
 //! Deterministic on-disk cache for AI chat responses.
 //!
-//! The cache key is a stable hash of the exact request (provider, model, and
-//! every message). Identical requests — e.g. regenerating a commit message for
-//! the same staged diff — reuse the stored response and skip the network call.
+//! The cache key is a stable hash of the exact request (provider, endpoint,
+//! model, and every message). Identical requests — e.g. regenerating a commit
+//! message for the same staged diff — reuse the stored response and skip the
+//! network call.
 //!
 //! FNV-1a is used instead of [`std::hash`] because its result must stay stable
 //! across Rust versions and platforms; `DefaultHasher` makes no such promise.
@@ -34,12 +35,16 @@ fn role_tag(role: Role) -> &'static str {
 
 /// Deterministic cache key (16 hex chars) for a chat request.
 ///
+/// `endpoint` is where the reply comes from. A provider name is just a config
+/// key that can point anywhere, so without it a reply fetched from one server
+/// would be served to requests meant for another.
+///
 /// Fields are length-prefixed so no message content can be crafted to collide
 /// with a different field layout.
-pub fn request_key(provider: &str, model: &str, messages: &[Message]) -> String {
+pub fn request_key(provider: &str, endpoint: &str, model: &str, messages: &[Message]) -> String {
     let mut buf = String::new();
-    buf.push_str("aish-cache-v1\n");
-    for field in [provider, model] {
+    buf.push_str("aish-cache-v2\n");
+    for field in [provider, endpoint, model] {
         buf.push_str(&field.len().to_string());
         buf.push('\n');
         buf.push_str(field);
@@ -126,30 +131,35 @@ mod tests {
         vec![Message::system("sys"), Message::user(diff)]
     }
 
+    const OPENAI: &str = "https://api.openai.com/v1";
+    const OTHER: &str = "http://127.0.0.1:9/v1";
+
+    fn key(provider: &str, endpoint: &str, model: &str, diff: &str) -> String {
+        request_key(provider, endpoint, model, &msgs(diff))
+    }
+
     #[test]
     fn key_is_deterministic_for_identical_requests() {
-        let a = request_key("openai", "gpt-5-mini", &msgs("diff --git a/x"));
-        let b = request_key("openai", "gpt-5-mini", &msgs("diff --git a/x"));
+        let a = key("openai", OPENAI, "gpt-5-mini", "diff --git a/x");
+        let b = key("openai", OPENAI, "gpt-5-mini", "diff --git a/x");
         assert_eq!(a, b);
         assert_eq!(a.len(), 16);
     }
 
     #[test]
-    fn key_changes_with_diff_model_or_provider() {
-        let base = request_key("openai", "gpt-5-mini", &msgs("diff A"));
-        assert_ne!(base, request_key("openai", "gpt-5-mini", &msgs("diff B")));
-        assert_ne!(base, request_key("openai", "gpt-5-nano", &msgs("diff A")));
-        assert_ne!(
-            base,
-            request_key("anthropic", "gpt-5-mini", &msgs("diff A"))
-        );
+    fn key_changes_with_diff_model_endpoint_or_provider() {
+        let base = key("openai", OPENAI, "gpt-5-mini", "diff A");
+        assert_ne!(base, key("openai", OPENAI, "gpt-5-mini", "diff B"));
+        assert_ne!(base, key("openai", OPENAI, "gpt-5-nano", "diff A"));
+        assert_ne!(base, key("openai", OTHER, "gpt-5-mini", "diff A"));
+        assert_ne!(base, key("anthropic", OPENAI, "gpt-5-mini", "diff A"));
     }
 
     #[test]
     fn length_prefix_prevents_field_boundary_collisions() {
         // Without length prefixing, "ab" + "c" could collide with "a" + "bc".
-        let one = request_key("ab", "c", &[]);
-        let two = request_key("a", "bc", &[]);
+        let one = request_key("ab", "c", "d", &[]);
+        let two = request_key("a", "bc", "d", &[]);
         assert_ne!(one, two);
     }
 
@@ -186,7 +196,7 @@ mod tests {
     #[test]
     fn put_then_get_roundtrips() {
         let dir = tempdir().unwrap();
-        let key = request_key("openai", "gpt-5-mini", &msgs("diff"));
+        let key = request_key("openai", OPENAI, "gpt-5-mini", &msgs("diff"));
         assert!(get(dir.path(), &key).is_none());
         put(dir.path(), &key, "feat: cached message").unwrap();
         assert_eq!(

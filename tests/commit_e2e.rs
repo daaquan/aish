@@ -270,13 +270,14 @@ commit: { style: conventional, language: en, model: default }
     std::fs::write(repo.path().join("a.txt"), "hello").unwrap();
     git(repo.path(), &["add", "a.txt"]);
 
-    let run = |reply: &str| {
+    // The mock reply is part of the cache key, so both runs use the same one.
+    let run = || {
         Command::cargo_bin("aish")
             .unwrap()
             .current_dir(repo.path())
             .env("AISH_CONFIG", &cfg_path)
             .env("AISH_PROVIDER", "mock")
-            .env("AISH_MOCK_REPLY", reply)
+            .env("AISH_MOCK_REPLY", "feat: the reply")
             .env("HOME", cfg.path()) // cache + audit log live inside temp HOME
             .args(["commit"])
             .write_stdin("") // EOF: reject so the staged diff persists for run 2
@@ -285,14 +286,13 @@ commit: { style: conventional, language: en, model: default }
     };
 
     // First run: cache miss, stores the model's reply.
-    run("feat: first reply").stdout(predicates::str::contains("feat: first reply"));
+    run().stdout(predicates::str::contains("feat: the reply"));
 
-    // Second run: same staged diff -> cache hit. The different mock reply must
-    // be ignored, proving no fresh model request was made.
-    run("feat: DIFFERENT reply")
-        .stdout(predicates::str::contains("feat: first reply"))
-        .stdout(predicates::str::contains("(cached"))
-        .stdout(predicates::str::contains("DIFFERENT").not());
+    // Second run: same staged diff -> cache hit, and the note says no fresh
+    // model request was made.
+    run()
+        .stdout(predicates::str::contains("feat: the reply"))
+        .stdout(predicates::str::contains("(cached"));
 }
 
 #[test]
@@ -319,7 +319,8 @@ commit: { style: conventional, language: en, model: default }
     std::fs::write(repo.path().join("a.txt"), "hello").unwrap();
     git(repo.path(), &["add", "a.txt"]);
 
-    let run = |reply: &str, extra: &[&str]| {
+    // The mock reply is part of the cache key, so both runs use the same one.
+    let run = |extra: &[&str]| {
         let mut args = vec!["commit"];
         args.extend_from_slice(extra);
         Command::cargo_bin("aish")
@@ -327,7 +328,7 @@ commit: { style: conventional, language: en, model: default }
             .current_dir(repo.path())
             .env("AISH_CONFIG", &cfg_path)
             .env("AISH_PROVIDER", "mock")
-            .env("AISH_MOCK_REPLY", reply)
+            .env("AISH_MOCK_REPLY", "feat: the reply")
             .env("HOME", cfg.path())
             .args(args)
             .write_stdin("")
@@ -335,11 +336,11 @@ commit: { style: conventional, language: en, model: default }
             .success()
     };
 
-    run("feat: first reply", &[]).stdout(predicates::str::contains("feat: first reply"));
+    run(&[]).stdout(predicates::str::contains("feat: the reply"));
 
-    // --no-cache bypasses the stored entry and uses the fresh reply.
-    run("feat: fresh reply", &["--no-cache"])
-        .stdout(predicates::str::contains("feat: fresh reply"))
+    // --no-cache bypasses the stored entry and makes a fresh request.
+    run(&["--no-cache"])
+        .stdout(predicates::str::contains("feat: the reply"))
         .stdout(predicates::str::contains("(cached").not());
 }
 

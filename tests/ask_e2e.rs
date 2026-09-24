@@ -37,14 +37,15 @@ fn ask_includes_piped_stdin_as_context() {
     std::fs::write(&cfg_path, CONFIG).unwrap();
 
     // Two runs differing only in piped stdin must produce different cache
-    // keys: the second run must NOT reuse the first reply, proving stdin
-    // reached the prompt.
-    let run = |stdin: &str, reply: &str| {
+    // keys: the second run must NOT be served from the cache, proving stdin
+    // reached the prompt. The mock reply is part of the key, so both runs use
+    // the same one.
+    let run = |stdin: &str| {
         Command::cargo_bin("aish")
             .unwrap()
             .env("AISH_CONFIG", &cfg_path)
             .env("AISH_PROVIDER", "mock")
-            .env("AISH_MOCK_REPLY", reply)
+            .env("AISH_MOCK_REPLY", "an answer")
             .env("HOME", cfg.path())
             .args(["ask", "explain this error"])
             .write_stdin(stdin)
@@ -52,10 +53,9 @@ fn ask_includes_piped_stdin_as_context() {
             .success()
     };
 
-    run("error[E0382]: borrow of moved value", "first answer")
-        .stdout(predicates::str::contains("first answer"));
-    run("error[E0499]: cannot borrow twice", "second answer")
-        .stdout(predicates::str::contains("second answer"))
+    run("error[E0382]: borrow of moved value").stdout(predicates::str::contains("an answer"));
+    run("error[E0499]: cannot borrow twice")
+        .stdout(predicates::str::contains("an answer"))
         .stdout(predicates::str::contains("(cached").not());
 }
 
@@ -65,12 +65,12 @@ fn ask_caches_identical_question_and_context() {
     let cfg_path = cfg.path().join("config.yaml");
     std::fs::write(&cfg_path, CONFIG).unwrap();
 
-    let run = |reply: &str| {
+    let run = || {
         Command::cargo_bin("aish")
             .unwrap()
             .env("AISH_CONFIG", &cfg_path)
             .env("AISH_PROVIDER", "mock")
-            .env("AISH_MOCK_REPLY", reply)
+            .env("AISH_MOCK_REPLY", "the answer")
             .env("HOME", cfg.path())
             .args(["ask", "same question"])
             .write_stdin("same context")
@@ -78,12 +78,11 @@ fn ask_caches_identical_question_and_context() {
             .success()
     };
 
-    run("the answer").stdout(predicates::str::contains("the answer"));
-    // Identical request: served from cache, fresh mock reply ignored.
-    run("DIFFERENT")
+    run().stdout(predicates::str::contains("the answer"));
+    // Identical request (the mock reply is part of the key): served from cache.
+    run()
         .stdout(predicates::str::contains("the answer"))
-        .stdout(predicates::str::contains("(cached"))
-        .stdout(predicates::str::contains("DIFFERENT").not());
+        .stdout(predicates::str::contains("(cached"));
 }
 
 #[test]
