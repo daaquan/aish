@@ -42,8 +42,8 @@ commit: { style: conventional, language: en, model: default }
         .env("AISH_CONFIG", &cfg_path)
         .env("AISH_PROVIDER", "mock")
         .env("AISH_MOCK_REPLY", "feat: add greeting file")
-        .env("HOME", cfg.path()) // keep audit log inside temp
-        .env_remove("AISH_HOME")
+        .env("HOME", cfg.path())
+        .env("AISH_HOME", cfg.path().join("aish-home")) // keep audit log inside temp
         .args(["commit", "--apply"])
         .assert()
         .success()
@@ -92,7 +92,7 @@ commit: { style: conventional, language: en, model: default }
         .env("AISH_PROVIDER", "mock")
         .env("AISH_MOCK_REPLY", "feat: update greeting")
         .env("HOME", cfg.path())
-        .env_remove("AISH_HOME")
+        .env("AISH_HOME", cfg.path().join("aish-home"))
         .args(["commit", "-a", "--apply"])
         .assert()
         .success()
@@ -138,7 +138,7 @@ commit: { style: conventional, language: en, model: default }
         .env("AISH_PROVIDER", "mock")
         .env("AISH_MOCK_REPLY", "feat: ai suggestion")
         .env("HOME", cfg.path())
-        .env_remove("AISH_HOME")
+        .env("AISH_HOME", cfg.path().join("aish-home"))
         .env("EDITOR", "printf 'fix: hand-edited subject' >")
         .args(["commit"])
         // The confirm loop re-prompts after an edit, so accept the edited
@@ -194,7 +194,7 @@ commit: { style: conventional, language: en, model: default }
         .env("AISH_PROVIDER", "mock")
         .env("AISH_MOCK_REPLY", "feat: ai suggestion")
         .env("HOME", cfg.path())
-        .env_remove("AISH_HOME")
+        .env("AISH_HOME", cfg.path().join("aish-home"))
         .env("EDITOR", "printf '' >")
         .args(["commit"])
         .write_stdin("e\n")
@@ -233,7 +233,7 @@ fn commit_aborts_on_eof_without_apply() {
         .env("AISH_PROVIDER", "mock")
         .env("AISH_MOCK_REPLY", "feat: should not commit")
         .env("HOME", cfg.path())
-        .env_remove("AISH_HOME")
+        .env("AISH_HOME", cfg.path().join("aish-home"))
         .args(["commit"])
         .write_stdin("") // EOF immediately
         .assert()
@@ -283,8 +283,8 @@ commit: { style: conventional, language: en, model: default }
             .env("AISH_CONFIG", &cfg_path)
             .env("AISH_PROVIDER", "mock")
             .env("AISH_MOCK_REPLY", "feat: the reply")
-            .env("HOME", cfg.path()) // cache + audit log live inside temp HOME
-            .env_remove("AISH_HOME")
+            .env("HOME", cfg.path())
+            .env("AISH_HOME", cfg.path().join("aish-home")) // cache + audit log live inside temp
             .args(["commit"])
             .write_stdin("") // EOF: reject so the staged diff persists for run 2
             .assert()
@@ -336,7 +336,7 @@ commit: { style: conventional, language: en, model: default }
             .env("AISH_PROVIDER", "mock")
             .env("AISH_MOCK_REPLY", "feat: the reply")
             .env("HOME", cfg.path())
-            .env_remove("AISH_HOME")
+            .env("AISH_HOME", cfg.path().join("aish-home"))
             .args(args)
             .write_stdin("")
             .assert()
@@ -382,7 +382,7 @@ commit: { style: conventional, language: en, model: default }
         .env("AISH_PROVIDER", "mock")
         .env("AISH_MOCK_REPLY", "feat: add greeting file")
         .env("HOME", cfg.path())
-        .env_remove("AISH_HOME")
+        .env("AISH_HOME", cfg.path().join("aish-home"))
         .args(["commit", "--apply", "--json"])
         .assert()
         .success()
@@ -419,7 +419,7 @@ fn commit_json_without_apply_suggests_without_committing() {
         .env("AISH_PROVIDER", "mock")
         .env("AISH_MOCK_REPLY", "feat: suggested only")
         .env("HOME", cfg.path())
-        .env_remove("AISH_HOME")
+        .env("AISH_HOME", cfg.path().join("aish-home"))
         .args(["commit", "--json"]) // no --apply, no stdin: must not block or commit
         .assert()
         .success()
@@ -451,7 +451,7 @@ fn config_check_json_reports_errors_and_fails() {
         .unwrap()
         .env("AISH_CONFIG", &cfg_path)
         .env("HOME", cfg.path())
-        .env_remove("AISH_HOME")
+        .env("AISH_HOME", cfg.path().join("aish-home"))
         .args(["config", "check", "--json"])
         .assert()
         .failure() // nonzero exit so CI gates fail

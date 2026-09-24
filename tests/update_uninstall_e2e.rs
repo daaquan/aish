@@ -5,6 +5,11 @@
 //! by wiremock via the `AISH_UPDATE_*_BASE` overrides — no network. Those
 //! overrides are honoured in debug builds only (see `update::endpoint_base`),
 //! so the `update_*` cases below are ignored under `--release`.
+//!
+//! Unix only: these tests place `~/.aish` and `~/.cargo` through `$HOME`,
+//! which `dirs` ignores on Windows, so there `uninstall --purge` would delete
+//! the developer's real data dir.
+#![cfg(unix)]
 
 use aish::update::asset_name;
 use serde_json::json;
@@ -337,6 +342,48 @@ fn uninstall_purge_removes_config_written_under_aish_home() {
     );
 }
 
+/// The other e2e suites all set `$AISH_HOME`, so this is where the writers'
+/// default location is covered: with neither it nor `$AISH_CONFIG` set,
+/// config, cache and audit log must land in the `~/.aish` that `--purge`
+/// deletes.
+#[test]
+fn uninstall_purge_removes_files_written_to_default_data_dir() {
+    let home = tempdir().unwrap();
+    let bin = copy_bin(home.path(), "bin");
+    let data = home.path().join(".aish");
+
+    // One mock `run --print` lays down the template config, caches the reply
+    // and audits the decision, without running anything.
+    let out = Command::new(&bin)
+        .env("HOME", home.path())
+        .env_remove("AISH_HOME")
+        .env_remove("AISH_CONFIG")
+        .env_remove("CARGO_HOME")
+        .env("AISH_PROVIDER", "mock")
+        .env("AISH_MOCK_REPLY", "echo hi")
+        .args(["--json", "run", "--print", "say hi"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    for name in ["config.yaml", "cache", "audit.log"] {
+        assert!(data.join(name).exists(), "{name} not in ~/.aish");
+    }
+
+    let out = run(&bin, home.path(), None, &["uninstall", "--yes", "--purge"]);
+
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!data.exists(), "~/.aish should be purged");
+}
+
 #[test]
 fn uninstall_without_yes_aborts_on_eof() {
     let home = tempdir().unwrap();
@@ -372,7 +419,6 @@ fn uninstall_purge_refuses_aish_home_outside_home() {
 }
 
 /// `<home>/link/data` is inside home as written, but `link` points out of it.
-#[cfg(unix)]
 #[test]
 fn uninstall_purge_refuses_aish_home_behind_a_symlink_out_of_home() {
     let home = tempdir().unwrap();
@@ -404,7 +450,6 @@ fn uninstall_purge_refuses_aish_home_behind_a_symlink_out_of_home() {
 
 /// `<home>/out/link` resolves back into home, but `out` leads out of it, so
 /// the entry `remove_dir_all` would unlink, `link` itself, is outside home.
-#[cfg(unix)]
 #[test]
 fn uninstall_purge_refuses_a_link_out_of_home_that_points_back_in() {
     let home = tempdir().unwrap();
@@ -440,7 +485,6 @@ fn uninstall_purge_refuses_a_link_out_of_home_that_points_back_in() {
 
 /// A home behind a symlink (FreeBSD's `/home -> /usr/home`) still purges:
 /// the resolved data dir is compared against the resolved home.
-#[cfg(unix)]
 #[test]
 fn uninstall_purge_works_when_home_is_behind_a_symlink() {
     let root = tempdir().unwrap();
@@ -464,7 +508,6 @@ fn uninstall_purge_works_when_home_is_behind_a_symlink() {
 }
 
 /// Dotdirs on a symlinked disk are common; a link that stays in home is fine.
-#[cfg(unix)]
 #[test]
 fn uninstall_purge_follows_a_symlink_that_stays_in_home() {
     let home = tempdir().unwrap();

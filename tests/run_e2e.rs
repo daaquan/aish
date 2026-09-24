@@ -26,8 +26,8 @@ fn aish(cfg_dir: &std::path::Path, cfg_path: &std::path::Path, reply: &str) -> C
     cmd.env("AISH_CONFIG", cfg_path)
         .env("AISH_PROVIDER", "mock")
         .env("AISH_MOCK_REPLY", reply)
-        .env("HOME", cfg_dir) // keep audit log inside the temp dir
-        .env_remove("AISH_HOME");
+        .env("HOME", cfg_dir)
+        .env("AISH_HOME", cfg_dir.join("aish-home")); // keep audit log inside the temp dir
     cmd
 }
 
@@ -115,9 +115,11 @@ fn json_print_does_not_run() {
     assert_eq!(v["ran"], false);
 }
 
-/// Parse every JSONL entry `aish` appended to the audit log under `home`.
+/// Parse every JSONL entry `aish` appended to the audit log in the
+/// `$AISH_HOME` that `aish()` sets under `home`. That dir is not `.aish`, the
+/// `$HOME` fallback, so a log written past `$AISH_HOME` fails here on unix too.
 fn audit_entries(home: &std::path::Path) -> Vec<serde_json::Value> {
-    let log = std::fs::read_to_string(home.join(".aish").join("audit.log"))
+    let log = std::fs::read_to_string(home.join("aish-home").join("audit.log"))
         .expect("audit log was written");
     log.lines()
         .map(|l| serde_json::from_str(l).expect("audit line is valid JSON"))

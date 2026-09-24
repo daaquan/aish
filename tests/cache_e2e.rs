@@ -19,7 +19,7 @@ models:
 commit: { style: conventional, language: en, model: default }
 "#;
 
-/// Populate $HOME/.aish/cache by running one mock commit suggestion.
+/// Populate `<home>/aish-home/cache` by running one mock commit suggestion.
 fn populate_cache(home: &std::path::Path, cfg_path: &std::path::Path) {
     let repo = tempdir().unwrap();
     git(repo.path(), &["init", "-q"]);
@@ -35,11 +35,17 @@ fn populate_cache(home: &std::path::Path, cfg_path: &std::path::Path) {
         .env("AISH_PROVIDER", "mock")
         .env("AISH_MOCK_REPLY", "feat: cached entry")
         .env("HOME", home)
-        .env_remove("AISH_HOME")
+        .env("AISH_HOME", home.join("aish-home"))
         .args(["commit"])
         .write_stdin("")
         .assert()
         .success();
+    // Checked on disk: `cache stats` would find a cache written past
+    // `$AISH_HOME` just as well, in `<home>/.aish` on unix.
+    assert!(
+        home.join("aish-home").join("cache").is_dir(),
+        "cache not in $AISH_HOME"
+    );
 }
 
 #[test]
@@ -56,7 +62,7 @@ fn cache_stats_reports_entries_then_clear_empties() {
             .unwrap()
             .env("AISH_CONFIG", &cfg_path)
             .env("HOME", home.path())
-            .env_remove("AISH_HOME")
+            .env("AISH_HOME", home.path().join("aish-home"))
             .args(full)
             .assert()
             .success()
@@ -74,7 +80,7 @@ fn cache_stats_reports_entries_then_clear_empties() {
         .unwrap()
         .env("AISH_CONFIG", &cfg_path)
         .env("HOME", home.path())
-        .env_remove("AISH_HOME")
+        .env("AISH_HOME", home.path().join("aish-home"))
         .args(["cache", "clear", "--yes"])
         .assert()
         .success()
@@ -96,7 +102,7 @@ fn cache_clear_without_yes_aborts_on_eof() {
         .unwrap()
         .env("AISH_CONFIG", &cfg_path)
         .env("HOME", home.path())
-        .env_remove("AISH_HOME")
+        .env("AISH_HOME", home.path().join("aish-home"))
         .args(["cache", "clear"])
         .write_stdin("") // EOF: must not delete
         .assert()
@@ -107,7 +113,7 @@ fn cache_clear_without_yes_aborts_on_eof() {
         .unwrap()
         .env("AISH_CONFIG", &cfg_path)
         .env("HOME", home.path())
-        .env_remove("AISH_HOME")
+        .env("AISH_HOME", home.path().join("aish-home"))
         .args(["cache", "stats", "--json"])
         .assert()
         .success()
@@ -128,7 +134,7 @@ fn cache_stats_on_fresh_home_is_empty() {
         .unwrap()
         .env("AISH_CONFIG", &cfg_path)
         .env("HOME", home.path())
-        .env_remove("AISH_HOME")
+        .env("AISH_HOME", home.path().join("aish-home"))
         .args(["cache", "stats"])
         .assert()
         .success()

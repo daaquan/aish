@@ -5,10 +5,6 @@
 //! proxy variable — must not plant the command a later plain `aish run --yes`
 //! executes. Providers here are OpenAI-compatible wiremock servers — no
 //! network.
-//!
-//! Unix only: the cache is isolated through `$HOME`, which `dirs` ignores on
-//! Windows, so there these runs would share the developer's real cache.
-#![cfg(unix)]
 
 use assert_cmd::Command;
 use serde_json::{json, Value};
@@ -46,11 +42,13 @@ commit: {{ style: conventional, language: en, model: default }}
     )
 }
 
-/// Temp $HOME whose `~/.aish/config.yaml` points at `base_url`.
+/// Temp home whose data dir, `aish-home`, has a `config.yaml` pointing at
+/// `base_url`. Not `.aish`, so a lookup that skips `$AISH_HOME` for the
+/// `$HOME` fallback finds no config and fails here on unix too.
 fn home_for(base_url: &str) -> TempDir {
     let home = tempdir().unwrap();
-    std::fs::create_dir_all(home.path().join(".aish")).unwrap();
-    std::fs::write(home.path().join(".aish/config.yaml"), config(base_url)).unwrap();
+    std::fs::create_dir_all(home.path().join("aish-home")).unwrap();
+    std::fs::write(home.path().join("aish-home/config.yaml"), config(base_url)).unwrap();
     home
 }
 
@@ -76,8 +74,8 @@ const PROXY_ENV: [&str; 9] = [
 ];
 
 /// `aish --json run --print` for a fixed prompt. Of aish's variables only
-/// `$HOME` and `env` are set, so `&[]` is a later plain invocation. Returns the
-/// JSON envelope.
+/// `$AISH_HOME` and `env` are set, so `&[]` is a later plain invocation.
+/// Returns the JSON envelope.
 fn run_print(home: &Path, env: &[(&str, &str)]) -> Value {
     let mut aish = Command::cargo_bin("aish").unwrap();
     for var in PROXY_ENV {
@@ -85,7 +83,7 @@ fn run_print(home: &Path, env: &[(&str, &str)]) -> Value {
     }
     let out = aish
         .env("HOME", home)
-        .env_remove("AISH_HOME")
+        .env("AISH_HOME", home.join("aish-home"))
         .env_remove("AISH_CONFIG")
         .env_remove("AISH_PROVIDER")
         .env_remove("AISH_MOCK_REPLY")
