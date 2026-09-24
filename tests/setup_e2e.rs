@@ -47,6 +47,39 @@ fn repair_backs_up_existing_then_restores_template() {
 }
 
 #[test]
+fn repeated_repair_keeps_the_original_backup() {
+    let dir = tempdir().unwrap();
+    let cfg = dir.path().join("config.yaml");
+    std::fs::write(&cfg, "hand-tuned: original").unwrap();
+
+    run_repair(&cfg).success();
+    // The second run backs up the template the first one wrote, under a new
+    // name, and reports that name.
+    let out = Command::cargo_bin("aish")
+        .unwrap()
+        .env("AISH_CONFIG", &cfg)
+        .args(["--json", "setup", "--repair"])
+        .assert()
+        .success()
+        .get_output()
+        .stdout
+        .clone();
+    let v: serde_json::Value = serde_json::from_slice(&out).expect("stdout is valid JSON");
+
+    let first = dir.path().join("config.yaml.bak");
+    let second = dir.path().join("config.yaml.bak.1");
+    assert_eq!(v["backup"], second.display().to_string());
+    assert_eq!(
+        std::fs::read_to_string(&first).unwrap(),
+        "hand-tuned: original"
+    );
+    assert_eq!(
+        std::fs::read_to_string(&second).unwrap(),
+        std::fs::read_to_string(&cfg).unwrap()
+    );
+}
+
+#[test]
 fn wizard_without_tty_errors() {
     let dir = tempdir().unwrap();
     let cfg = dir.path().join("config.yaml");

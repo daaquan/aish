@@ -28,8 +28,10 @@ Inspect or empty the cache with `aish cache stats` / `aish cache clear`
 A config is created automatically on first run. Run `aish setup` for an
 interactive wizard that prompts for provider API keys (stored as plaintext or
 `${ENV_VAR}` references) and a default model, or `aish setup --repair` to
-restore the template (backing up any existing file). Configure style, language,
-and model alias in `~/.aish/config.yaml`:
+restore the template. Either one first backs up an existing config to the first
+free name of `config.yaml.bak`, `config.yaml.bak.1`, `config.yaml.bak.2`, …, so
+an earlier backup is never overwritten. Configure style, language, and model
+alias in `~/.aish/config.yaml`:
 
 ```yaml
 commit:

@@ -2,7 +2,9 @@
 //! `aish setup` — interactive configuration wizard, plus `--repair` to restore
 //! the initial template config.
 use crate::commands::emit_json;
-use crate::config::{write_secure, CommitConfig, Config, ModelAlias, ProviderConfig};
+use crate::config::{
+    write_new_secure, write_secure, CommitConfig, Config, ModelAlias, ProviderConfig,
+};
 use anyhow::{anyhow, Context, Result};
 use std::collections::BTreeMap;
 use std::io::{self, IsTerminal, Write};
@@ -199,8 +201,14 @@ pub fn build_config(providers: &[EnabledProvider], default_alias: &str) -> Confi
     }
 }
 
-/// Copy an existing config to `<path>.bak`. Returns the backup path if one was
-/// made, or None if there was no file to back up.
+/// Copy an existing config to the first free name of `<path>.bak`,
+/// `<path>.bak.1`, `<path>.bak.2`, … Returns the backup path if one was made,
+/// or None if there was no file to back up.
+///
+/// An existing backup is never overwritten: it may be the only copy of a
+/// hand-tuned config, which a second `setup --repair` would otherwise replace
+/// with the template it wrote the first time. Each name is claimed with an
+/// exclusive create, so a backup that appears concurrently is skipped too.
 ///
 /// The backup holds the same plaintext keys as the config, so it is written
 /// owner-only like the config itself; `std::fs::copy` would carry a looser
@@ -209,13 +217,24 @@ fn back_up_existing(path: &Path) -> Result<Option<PathBuf>> {
     if !path.exists() {
         return Ok(None);
     }
-    let mut bak = path.as_os_str().to_owned();
-    bak.push(".bak");
-    let bak = PathBuf::from(bak);
     let contents = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
-    write_secure(&bak, contents)
-        .with_context(|| format!("backing up {} to {}", path.display(), bak.display()))?;
-    Ok(Some(bak))
+    let mut n = 0u32;
+    loop {
+        let mut bak = path.as_os_str().to_owned();
+        bak.push(".bak");
+        if n > 0 {
+            bak.push(format!(".{n}"));
+        }
+        let bak = PathBuf::from(bak);
+        match write_new_secure(&bak, &contents) {
+            Ok(()) => return Ok(Some(bak)),
+            Err(e) if e.kind() == io::ErrorKind::AlreadyExists => n += 1,
+            Err(e) => {
+                return Err(e)
+                    .with_context(|| format!("backing up {} to {}", path.display(), bak.display()))
+            }
+        }
+    }
 }
 
 fn report_written(
@@ -382,6 +401,38 @@ mod tests {
         let mode = std::fs::metadata(&bak).unwrap().permissions().mode() & 0o777;
         assert_eq!(mode, 0o600, "backup left at {mode:o}");
         assert_eq!(std::fs::read(&bak).unwrap(), std::fs::read(&cfg).unwrap());
+    }
+
+    /// A second setup must not replace the first backup: after `--repair` it
+    /// is the only copy of the user's original config.
+    #[test]
+    fn successive_backups_never_overwrite_each_other() {
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("config.yaml");
+        std::fs::write(&cfg, "providers:\n  openai: { api_key: sk-original }\n").unwrap();
+        let first = back_up_existing(&cfg).unwrap().expect("first backup made");
+
+        std::fs::write(&cfg, Config::template()).unwrap();
+        let second = back_up_existing(&cfg).unwrap().expect("second backup made");
+
+        assert_ne!(first, second, "second backup reused {}", first.display());
+        assert_eq!(first, dir.path().join("config.yaml.bak"));
+        assert_eq!(second, dir.path().join("config.yaml.bak.1"));
+        assert_eq!(
+            std::fs::read_to_string(&first).unwrap(),
+            "providers:\n  openai: { api_key: sk-original }\n"
+        );
+        assert_eq!(
+            std::fs::read_to_string(&second).unwrap(),
+            Config::template()
+        );
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&second).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode & 0o077, 0, "second backup left at {mode:o}");
+        }
     }
 
     #[test]

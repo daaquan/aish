@@ -316,6 +316,26 @@ fn open_owner_only(path: &std::path::Path) -> std::io::Result<std::fs::File> {
     Ok(f)
 }
 
+/// Write `contents` to a file that must not exist yet, owner-only (`0600`) on
+/// unix like [`write_secure`]. Fails with `AlreadyExists` rather than touch a
+/// file (or follow a symlink) already at `path`.
+///
+/// `create_new` checks and creates in one step, so a file that appears between
+/// a caller's own existence check and the write is never clobbered. The file
+/// is always new, so `mode()` alone keeps it owner-only from the start. Parent
+/// directories are not created.
+pub fn write_new_secure(path: &std::path::Path, contents: impl AsRef<[u8]>) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    opts.open(path)?.write_all(contents.as_ref())
+}
+
 /// Expand `${VAR}` occurrences. Missing variable → empty string (validated later when the
 /// provider is actually used). Unterminated `${` → Parse error.
 fn expand_env(input: &str) -> Result<String, ConfigError> {
