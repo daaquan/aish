@@ -60,23 +60,17 @@ pub async fn run(
         run_with_gate(command.clone(), yes, json, &resolved, &generated)
     };
 
-    let _ = crate::audit::record(&crate::audit::AuditEntry {
-        tool: "command.generate".into(),
-        provider: resolved.provider_name.clone(),
-        model: resolved.model.clone(),
-        prompt_tokens: generated.usage.prompt_tokens,
-        completion_tokens: generated.usage.completion_tokens,
-        decision: decision.into(),
-    });
-
-    // On "ran"/"edited" the gate already called process::exit; reaching here
-    // means "printed" or "aborted", both a clean exit 0.
+    // On "ran"/"edited" the gate already recorded the decision and called
+    // process::exit; reaching here means "printed" or "aborted", both a clean
+    // exit 0.
+    record_audit(&resolved, &generated, decision);
     Ok(())
 }
 
 /// Confirm/edit gate (skipped under `--yes` and `--json`), then execute.
-/// Returns the audit decision; calls `std::process::exit` after running so the
-/// wrapped command's exit code is propagated.
+/// Returns "aborted" if the user declines. Otherwise records the decision,
+/// runs the command, and calls `std::process::exit` so the wrapped command's
+/// exit code is propagated.
 fn run_with_gate(
     mut command: String,
     yes: bool,
@@ -103,10 +97,11 @@ fn run_with_gate(
         }
     }
 
+    let decision = if edited { "edited" } else { "ran" };
     if json {
         emit_json(&serde_json::json!({
             "command": command,
-            "decision": if edited { "edited" } else { "ran" },
+            "decision": decision,
             "ran": true,
             "cached": generated.cached,
             "provider": resolved.provider_name.clone(),
@@ -116,8 +111,23 @@ fn run_with_gate(
         }));
     }
 
+    // Record before running: process::exit skips everything after exec, and
+    // a Ctrl-C meant for the command also kills aish before exec returns.
+    record_audit(resolved, generated, decision);
     let code = exec(&command);
     std::process::exit(code);
+}
+
+/// Append this run's metadata-only entry to the audit log (best-effort).
+fn record_audit(resolved: &Resolved<'_>, generated: &Generated, decision: &str) {
+    let _ = crate::audit::record(&crate::audit::AuditEntry {
+        tool: "command.generate".into(),
+        provider: resolved.provider_name.clone(),
+        model: resolved.model.clone(),
+        prompt_tokens: generated.usage.prompt_tokens,
+        completion_tokens: generated.usage.completion_tokens,
+        decision: decision.into(),
+    });
 }
 
 /// Show the command and prompt `[Y/n/e(dit)]`. Returns the (possibly edited)

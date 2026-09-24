@@ -113,3 +113,72 @@ fn json_print_does_not_run() {
     assert_eq!(v["decision"], "printed");
     assert_eq!(v["ran"], false);
 }
+
+/// Parse every JSONL entry `aish` appended to the audit log under `home`.
+fn audit_entries(home: &std::path::Path) -> Vec<serde_json::Value> {
+    let log = std::fs::read_to_string(home.join(".aish").join("audit.log"))
+        .expect("audit log was written");
+    log.lines()
+        .map(|l| serde_json::from_str(l).expect("audit line is valid JSON"))
+        .collect()
+}
+
+#[test]
+fn yes_run_is_audited_before_exiting_with_its_code() {
+    let (dir, cfg) = config();
+    // aish exits straight from the gate with the command's own code, so the
+    // entry has to be written before that exit.
+    aish(dir.path(), &cfg, "exit 3")
+        .args(["run", "--yes", "fail with 3"])
+        .assert()
+        .code(3);
+    let entries = audit_entries(dir.path());
+    assert_eq!(entries.len(), 1, "got: {entries:?}");
+    assert_eq!(entries[0]["tool"], "command.generate");
+    assert_eq!(entries[0]["decision"], "ran");
+}
+
+#[test]
+fn run_that_kills_aish_is_still_audited() {
+    let (dir, cfg) = config();
+    // The command SIGKILLs aish itself, so exec() never returns: only an entry
+    // written before the command runs can reach the log.
+    aish(dir.path(), &cfg, "kill -9 $PPID")
+        .args(["run", "--yes", "kill my parent"])
+        .assert()
+        .failure();
+    let entries = audit_entries(dir.path());
+    assert_eq!(entries.len(), 1, "got: {entries:?}");
+    assert_eq!(entries[0]["tool"], "command.generate");
+    assert_eq!(entries[0]["decision"], "ran");
+}
+
+#[test]
+fn json_run_is_audited() {
+    let (dir, cfg) = config();
+    aish(dir.path(), &cfg, "exit 0")
+        .args(["--json", "run", "succeed"])
+        .assert()
+        .success();
+    let entries = audit_entries(dir.path());
+    assert_eq!(entries.len(), 1, "got: {entries:?}");
+    assert_eq!(entries[0]["tool"], "command.generate");
+    assert_eq!(entries[0]["decision"], "ran");
+}
+
+#[test]
+fn edited_run_is_audited_as_edited() {
+    let (dir, cfg) = config();
+    // Non-interactive "editor": replace the suggestion, then accept the edit.
+    aish(dir.path(), &cfg, "exit 3")
+        .env_remove("VISUAL")
+        .env("EDITOR", "printf 'exit 5' >")
+        .args(["run", "fail with 3"])
+        .write_stdin("e\ny\n")
+        .assert()
+        .code(5);
+    let entries = audit_entries(dir.path());
+    assert_eq!(entries.len(), 1, "got: {entries:?}");
+    assert_eq!(entries[0]["tool"], "command.generate");
+    assert_eq!(entries[0]["decision"], "edited");
+}
