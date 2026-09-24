@@ -186,6 +186,10 @@ aish uninstall --purge   # also delete the data dir ($AISH_HOME, default ~/.aish
 aish uninstall --yes     # skip the confirmation prompt
 ```
 
+`--purge` refuses a data dir whose path contains `..` or that, with
+symlinks resolved, is not strictly inside your home directory; the whole
+uninstall is then aborted and nothing is removed.
+
 Binaries installed via `cargo install` are detected and left alone — use
 `cargo install --git https://github.com/daaquan/aish` / `cargo uninstall aish`
 there instead.

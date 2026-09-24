@@ -1,12 +1,19 @@
 // SPDX-License-Identifier: MIT
-//! Core logic for `aish uninstall`: purge-path safety validation and
-//! directory sizing. The data dir itself comes from [`crate::paths`]; the
-//! confirmation prompt and CLI glue live in `commands::uninstall`.
+//! Core logic for `aish uninstall`: lexical purge-path safety validation
+//! and directory sizing. The data dir itself comes from [`crate::paths`];
+//! `commands::uninstall` re-validates the symlink-resolved path and owns the
+//! confirmation prompt and CLI glue.
 
-use std::path::Path;
+use std::path::{Component, Path};
 
-/// Guard before recursive delete: reject empty, root, home itself, or any
-/// path that is not strictly inside `home`. Returns the validated path.
+/// Guard before recursive delete: reject empty, root, home itself, `..`, or
+/// any path that is not strictly inside `home`. Returns the validated path.
+///
+/// The checks are lexical. `starts_with` compares components without
+/// resolving them, so `/home/u/../../etc` would count as inside `/home/u`:
+/// hence no `..` at all. `.` needs no check, since `Path` skips it when
+/// comparing (`/home/u/.` is home itself). Symlinks are left to the caller,
+/// which has to look at the filesystem to resolve them.
 pub fn validate_purge_path<'a>(dir: &'a Path, home: &Path) -> Result<&'a Path, String> {
     if dir.as_os_str().is_empty() {
         return Err("refusing to purge: empty path".into());
@@ -14,6 +21,12 @@ pub fn validate_purge_path<'a>(dir: &'a Path, home: &Path) -> Result<&'a Path, S
     if !dir.is_absolute() {
         return Err(format!(
             "refusing to purge relative path '{}'",
+            dir.display()
+        ));
+    }
+    if dir.components().any(|c| c == Component::ParentDir) {
+        return Err(format!(
+            "refusing to purge '{}': path contains '..'",
             dir.display()
         ));
     }
@@ -67,6 +80,7 @@ pub fn human_size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::path::PathBuf;
 
     #[test]
     fn purge_rejects_dangerous_paths() {
@@ -79,6 +93,47 @@ mod tests {
         assert!(validate_purge_path(Path::new("/srv/aish-data"), home).is_err());
         // Relative paths are ambiguous — reject.
         assert!(validate_purge_path(Path::new(".aish"), home).is_err());
+    }
+
+    /// An absolute home on every platform (`/home/u` has no drive letter on
+    /// Windows, so it would be refused as relative). It is never created.
+    fn absolute_home() -> PathBuf {
+        std::env::temp_dir().join("u")
+    }
+
+    #[test]
+    fn purge_rejects_parent_dir_components() {
+        let home = absolute_home();
+        let refused = |dir: PathBuf| {
+            let err = validate_purge_path(&dir, &home).unwrap_err();
+            assert!(
+                err.contains("path contains '..'"),
+                "{}: {err}",
+                dir.display()
+            );
+        };
+        // Lexically inside home, really outside it.
+        refused(home.join("../../etc"));
+        refused(home.join(".."));
+        refused(home.join(".aish/.."));
+        // Even where it would resolve inside home: no guessing.
+        refused(home.join("../u/.aish"));
+    }
+
+    #[test]
+    fn purge_sees_through_cur_dir_components() {
+        let home = absolute_home();
+        // `.` cannot pass home itself off as a subdir...
+        for dir in [home.join("."), home.parent().unwrap().join("./u/")] {
+            let err = validate_purge_path(&dir, &home).unwrap_err();
+            assert!(
+                err.contains("not a dedicated data dir"),
+                "{}: {err}",
+                dir.display()
+            );
+        }
+        // ...and names the same dir it would without it.
+        assert!(validate_purge_path(&home.join("./.aish"), &home).is_ok());
     }
 
     #[test]

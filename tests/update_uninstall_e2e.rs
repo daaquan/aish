@@ -371,6 +371,127 @@ fn uninstall_purge_refuses_aish_home_outside_home() {
     assert!(outside.path().join("precious").exists());
 }
 
+/// `<home>/link/data` is inside home as written, but `link` points out of it.
+#[cfg(unix)]
+#[test]
+fn uninstall_purge_refuses_aish_home_behind_a_symlink_out_of_home() {
+    let home = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let target = outside.path().join("data");
+    std::fs::create_dir(&target).unwrap();
+    std::fs::write(target.join("precious"), "data").unwrap();
+    std::os::unix::fs::symlink(outside.path(), home.path().join("link")).unwrap();
+    let bin = copy_bin(home.path(), "bin");
+
+    let out = Command::new(&bin)
+        .env("HOME", home.path())
+        .env("AISH_HOME", home.path().join("link/data"))
+        .env_remove("CARGO_HOME")
+        .args(["uninstall", "--yes", "--purge"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("outside home directory"),
+        "stderr should say why: {stderr}"
+    );
+    assert!(bin.exists(), "nothing may be deleted when the guard fires");
+    assert!(target.join("precious").exists());
+}
+
+/// `<home>/out/link` resolves back into home, but `out` leads out of it, so
+/// the entry `remove_dir_all` would unlink, `link` itself, is outside home.
+#[cfg(unix)]
+#[test]
+fn uninstall_purge_refuses_a_link_out_of_home_that_points_back_in() {
+    let home = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    let stuff = home.path().join("stuff");
+    std::fs::create_dir(&stuff).unwrap();
+    std::os::unix::fs::symlink(outside.path(), home.path().join("out")).unwrap();
+    let link = outside.path().join("link");
+    std::os::unix::fs::symlink(&stuff, &link).unwrap();
+    let bin = copy_bin(home.path(), "bin");
+
+    let out = Command::new(&bin)
+        .env("HOME", home.path())
+        .env("AISH_HOME", home.path().join("out/link"))
+        .env_remove("CARGO_HOME")
+        .args(["uninstall", "--yes", "--purge"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("outside home directory"),
+        "stderr should say why: {stderr}"
+    );
+    assert!(bin.exists(), "nothing may be deleted when the guard fires");
+    assert!(
+        link.symlink_metadata().is_ok(),
+        "the link outside home must survive"
+    );
+}
+
+/// A home behind a symlink (FreeBSD's `/home -> /usr/home`) still purges:
+/// the resolved data dir is compared against the resolved home.
+#[cfg(unix)]
+#[test]
+fn uninstall_purge_works_when_home_is_behind_a_symlink() {
+    let root = tempdir().unwrap();
+    let real = root.path().join("real");
+    let data = real.join(".aish");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(data.join("config.yaml"), "x: 1").unwrap();
+    let home = root.path().join("home");
+    std::os::unix::fs::symlink(&real, &home).unwrap();
+    let bin = copy_bin(&home, "bin");
+
+    let out = run(&bin, &home, None, &["uninstall", "--yes", "--purge"]);
+
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!bin.exists());
+    assert!(!data.exists(), "data dir should be purged");
+}
+
+/// Dotdirs on a symlinked disk are common; a link that stays in home is fine.
+#[cfg(unix)]
+#[test]
+fn uninstall_purge_follows_a_symlink_that_stays_in_home() {
+    let home = tempdir().unwrap();
+    let data = home.path().join("disk/aish");
+    std::fs::create_dir_all(&data).unwrap();
+    std::fs::write(data.join("config.yaml"), "x: 1").unwrap();
+    std::os::unix::fs::symlink(home.path().join("disk"), home.path().join("link")).unwrap();
+    let bin = copy_bin(home.path(), "bin");
+
+    let out = Command::new(&bin)
+        .env("HOME", home.path())
+        .env("AISH_HOME", home.path().join("link/aish"))
+        .env_remove("CARGO_HOME")
+        .args(["uninstall", "--yes", "--purge"])
+        .stdin(Stdio::null())
+        .output()
+        .unwrap();
+
+    assert!(
+        out.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    assert!(!bin.exists());
+    assert!(!data.exists(), "data dir should be purged");
+}
+
 #[test]
 fn uninstall_refuses_cargo_installed_binary() {
     let home = tempdir().unwrap();
