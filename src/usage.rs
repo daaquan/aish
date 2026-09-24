@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: AGPL-3.0-only
+// SPDX-License-Identifier: MIT
 //! Token usage and cost analytics over the JSONL audit log.
 use crate::config::ModelPricing;
 use serde::Deserialize;
