@@ -52,8 +52,16 @@ Out of scope:
   Ollama) — report those to the vendor
 - vulnerabilities in third-party crates — report upstream, though telling us
   so we can bump the dependency is welcome
-- issues that require an attacker to already have local write access to
-  `~/.aish/` or the user's shell
+- attacks by someone who already runs code as you, controls your shell or the
+  environment variables an `aish` invocation sees, or can write files under
+  `~/.aish/` such as `config.yaml` or cache entries — anything that access
+  already lets them do directly
+
+In scope, though, is anything in aish that turns control over a single
+invocation, such as its environment variables, into an effect on later
+invocations, or escalates it: for example redirecting a self-update (which is
+why the `AISH_UPDATE_*` endpoint overrides are compiled out of release
+builds), or one invocation planting a cache entry that later ones trust.
 
 ## Security model and user responsibilities
 
@@ -78,6 +86,12 @@ model provider you configure. Treat that as disclosure to a third party.
   pass neither when the input comes from an untrusted source; use `--print` to
   review the command without running it. (`aish fix` only runs the command you
   give it; it never executes the model's suggested fix.)
+- **`AISH_PROVIDER=mock`** makes aish answer with `$AISH_MOCK_REPLY` instead
+  of calling a provider. It is honoured in release builds too, for offline
+  smoke checks, and replaces the model's reply for that invocation only: a
+  cached mock reply is only served to a later run with the same
+  `$AISH_MOCK_REPLY`, and mock replies never share cache entries with real
+  providers.
 
 ## Disclosure
 
