@@ -23,7 +23,8 @@ pub async fn run(check: bool, version: Option<String>, json: bool) -> Result<()>
 
     let client = reqwest::Client::new();
     let tag = match &version {
-        Some(v) => normalize_tag(v),
+        Some(v) => normalize_tag(v)
+            .ok_or_else(|| anyhow!("invalid version '{v}': expected X.Y.Z, e.g. 0.5.0"))?,
         None => fetch_latest_tag(&client, &api_base).await?,
     };
     let latest = tag.trim_start_matches('v').to_string();

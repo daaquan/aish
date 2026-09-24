@@ -85,13 +85,14 @@ pub fn download_url(download_base: &str, tag: &str, asset: &str) -> String {
     )
 }
 
-/// Ensure a tag has the `v` prefix GitHub releases use (`0.5.0` → `v0.5.0`).
-pub fn normalize_tag(tag: &str) -> String {
-    if tag.starts_with('v') {
-        tag.to_string()
-    } else {
-        format!("v{tag}")
-    }
+/// Canonical release tag for a pinned version: `0.5.0` / `v0.5.0` → `v0.5.0`.
+///
+/// `None` unless `tag` is a plain `X.Y.Z` version. The tag is spliced into the
+/// download URL path, so anything else — e.g. `..` segments that would resolve
+/// to another repository's release asset — must never reach it.
+pub fn normalize_tag(tag: &str) -> Option<String> {
+    let (major, minor, patch) = parse_version(tag)?;
+    Some(format!("v{major}.{minor}.{patch}"))
 }
 
 /// Positive magic-byte check: ELF or Mach-O executable. Rejects empty
@@ -235,8 +236,21 @@ mod tests {
 
     #[test]
     fn normalize_tag_adds_v_prefix_once() {
-        assert_eq!(normalize_tag("0.5.0"), "v0.5.0");
-        assert_eq!(normalize_tag("v0.5.0"), "v0.5.0");
+        assert_eq!(normalize_tag("0.5.0").as_deref(), Some("v0.5.0"));
+        assert_eq!(normalize_tag("v0.5.0").as_deref(), Some("v0.5.0"));
+    }
+
+    #[test]
+    fn normalize_tag_rejects_anything_but_a_plain_version() {
+        // Spliced into the download URL, `..` would resolve to another
+        // repository's release asset on github.com.
+        assert_eq!(
+            normalize_tag("v1/../../../../../evil/aish/releases/download/v1"),
+            None
+        );
+        assert_eq!(normalize_tag("1.2.3/../x"), None);
+        assert_eq!(normalize_tag("latest"), None);
+        assert_eq!(normalize_tag(""), None);
     }
 
     #[test]
