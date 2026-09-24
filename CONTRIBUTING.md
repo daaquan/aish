@@ -37,7 +37,8 @@ required — a plain `git commit` is fine.
    - Explain the motivation.
    - Include a **test plan** (how you verified it; mark TODOs if any).
 4. **Merge.** A PR merges once it has **green CI** (the `ci` workflow runs
-   `cargo fmt --check`, `cargo clippy -D warnings`, and `cargo test --all`).
+   `cargo fmt --check`, `cargo clippy -D warnings`, `cargo test --all`, and
+   `cargo test --release --lib update::` for the release-only update endpoint gate).
    Squash, merge, and rebase merges are all allowed — pick whatever keeps history clean.
    No approving review is required.
 

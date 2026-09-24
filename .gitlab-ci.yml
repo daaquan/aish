@@ -29,6 +29,8 @@ build-test:
     - cargo fmt --all -- --check
     - cargo clippy --all-targets -- -D warnings
     - cargo test --all
+    # Release-profile endpoint gate; see the comment in ci.yml.
+    - cargo test --release --lib update::
   variables:
     AISH_PLUGINS_DIR: "$CI_PROJECT_DIR/aish-plugins"
 
