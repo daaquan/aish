@@ -72,6 +72,18 @@ pub(crate) async fn send_json<T: DeserializeOwned>(
         .map_err(|e| ProviderError::Decode(e.to_string()))
 }
 
+/// A client that never uses a proxy, for unit tests. Their wiremock servers
+/// listen on 127.0.0.1, but `reqwest::Client::new()` sends a request to
+/// whatever proxy the test process's `HTTP_PROXY` or `ALL_PROXY` names, so a
+/// developer's or CI runner's proxy settings would decide whether they pass.
+#[cfg(test)]
+pub(crate) fn direct_client() -> reqwest::Client {
+    reqwest::Client::builder()
+        .no_proxy()
+        .build()
+        .expect("a client without a proxy always builds")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -89,7 +101,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(status))
             .mount(&server)
             .await;
-        let rb = reqwest::Client::new().post(server.uri());
+        let rb = direct_client().post(server.uri());
         send_json::<Body>(rb, "test-model").await.unwrap_err()
     }
 
@@ -116,7 +128,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({"ok": true})))
             .mount(&server)
             .await;
-        let rb = reqwest::Client::new().post(server.uri());
+        let rb = direct_client().post(server.uri());
         let body: Body = send_json(rb, "m").await.unwrap();
         assert!(body.ok);
 
@@ -125,7 +137,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(200).set_body_string("not json"))
             .mount(&server2)
             .await;
-        let rb2 = reqwest::Client::new().post(server2.uri());
+        let rb2 = direct_client().post(server2.uri());
         let err = send_json::<Body>(rb2, "m").await.unwrap_err();
         assert!(matches!(err, ProviderError::Decode(_)));
     }
@@ -133,7 +145,7 @@ mod tests {
     #[tokio::test]
     async fn transport_error_does_not_leak_url_contents() {
         // Closed port; key smuggled into the URL must not appear in the error.
-        let rb = reqwest::Client::new().post("http://127.0.0.1:1/?key=SUPER_SECRET_KEY");
+        let rb = direct_client().post("http://127.0.0.1:1/?key=SUPER_SECRET_KEY");
         let err = send_json::<Body>(rb, "m").await.unwrap_err();
         assert!(
             !err.to_string().contains("SUPER_SECRET_KEY"),
@@ -190,7 +202,7 @@ mod tests {
             ))
             .mount(&server)
             .await;
-        let rb = reqwest::Client::new().post(server.uri());
+        let rb = direct_client().post(server.uri());
         let err = send_json::<Body>(rb, "test-model").await.unwrap_err();
         assert!(matches!(err, ProviderError::BadRequest(ref s) if s.contains("context length")));
     }

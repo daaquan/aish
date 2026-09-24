@@ -120,9 +120,19 @@ impl Provider for Gemini {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::http::direct_client;
     use crate::provider::{ChatRequest, Message, Provider};
     use wiremock::matchers::method;
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// [`Gemini::with_base`], but on a client that ignores the caller's proxy
+    /// variables ([`direct_client`]).
+    fn direct(base_url: String, api_key: String) -> Gemini {
+        Gemini {
+            client: direct_client(),
+            ..Gemini::with_base(base_url, api_key)
+        }
+    }
 
     #[tokio::test]
     async fn parses_candidate_text() {
@@ -137,7 +147,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let p = Gemini::with_base(server.uri(), "gk".into());
+        let p = direct(server.uri(), "gk".into());
         let resp = p
             .chat(ChatRequest {
                 model: "gemini-2.5-pro".into(),
@@ -164,7 +174,7 @@ mod tests {
             })))
             .mount(&server)
             .await;
-        let p = Gemini::with_base(server.uri(), "gk".into());
+        let p = direct(server.uri(), "gk".into());
         let resp = p
             .chat(ChatRequest {
                 model: "gemini-2.5-pro".into(),
@@ -189,7 +199,7 @@ mod tests {
     #[tokio::test]
     async fn request_error_does_not_leak_api_key() {
         // Point at a closed port so the request fails at the transport layer.
-        let p = Gemini::with_base("http://127.0.0.1:1".into(), "SUPER_SECRET_KEY".into());
+        let p = direct("http://127.0.0.1:1".into(), "SUPER_SECRET_KEY".into());
         let err = p
             .chat(ChatRequest {
                 model: "gemini-2.5-pro".into(),

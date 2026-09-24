@@ -53,6 +53,11 @@ fn run(bin: &Path, home: &Path, server: Option<&str>, args: &[&str]) -> std::pro
     // temp dir under it would make aish treat the copy as a cargo install.
     cmd.env_remove("AISH_HOME").env_remove("CARGO_HOME");
     if let Some(uri) = server {
+        // The release server is plain http on 127.0.0.1: reach it directly,
+        // whatever proxy the caller's environment names for http URLs.
+        for var in ["ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"] {
+            cmd.env_remove(var);
+        }
         cmd.env("AISH_UPDATE_API_BASE", uri)
             .env("AISH_UPDATE_DOWNLOAD_BASE", uri);
     }

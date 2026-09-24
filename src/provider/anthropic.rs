@@ -110,9 +110,19 @@ impl Provider for Anthropic {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::http::direct_client;
     use crate::provider::{ChatRequest, Message, Provider};
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// [`Anthropic::with_base`], but on a client that ignores the caller's proxy
+    /// variables ([`direct_client`]).
+    fn direct(base_url: String, api_key: String) -> Anthropic {
+        Anthropic {
+            client: direct_client(),
+            ..Anthropic::with_base(base_url, api_key)
+        }
+    }
 
     #[tokio::test]
     async fn sends_system_separately_and_parses_text() {
@@ -126,7 +136,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let p = Anthropic::with_base(server.uri(), "sk-ant".into());
+        let p = direct(server.uri(), "sk-ant".into());
         let resp = p
             .chat(ChatRequest {
                 model: "claude-opus-4-8".into(),

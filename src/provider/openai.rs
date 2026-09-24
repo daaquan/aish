@@ -93,9 +93,19 @@ impl Provider for OpenAiCompat {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::provider::http::direct_client;
     use crate::provider::{ChatRequest, Message, Provider};
     use wiremock::matchers::{method, path};
     use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    /// [`OpenAiCompat::new`], but on a client that ignores the caller's proxy
+    /// variables ([`direct_client`]).
+    fn direct(base_url: String, api_key: Option<String>) -> OpenAiCompat {
+        OpenAiCompat {
+            client: direct_client(),
+            ..OpenAiCompat::new(base_url, api_key)
+        }
+    }
 
     #[tokio::test]
     async fn sends_request_and_parses_choice() {
@@ -109,7 +119,7 @@ mod tests {
             .mount(&server)
             .await;
 
-        let p = OpenAiCompat::new(server.uri(), Some("sk-test".into()));
+        let p = direct(server.uri(), Some("sk-test".into()));
         let resp = p
             .chat(ChatRequest {
                 model: "gpt-5-mini".into(),
@@ -130,7 +140,7 @@ mod tests {
             .respond_with(ResponseTemplate::new(401))
             .mount(&server)
             .await;
-        let p = OpenAiCompat::new(server.uri(), Some("bad".into()));
+        let p = direct(server.uri(), Some("bad".into()));
         let err = p
             .chat(ChatRequest {
                 model: "m".into(),
