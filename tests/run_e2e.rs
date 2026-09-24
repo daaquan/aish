@@ -183,3 +183,71 @@ fn edited_run_is_audited_as_edited() {
     assert_eq!(entries[0]["tool"], "command.generate");
     assert_eq!(entries[0]["decision"], "edited");
 }
+
+#[tokio::test(flavor = "multi_thread")]
+async fn audit_names_the_provider_that_answered() {
+    use wiremock::matchers::{method, path};
+    use wiremock::{Mock, MockServer, ResponseTemplate};
+
+    // `aish usage` counts calls by the audited provider, so the mock hook's
+    // replies, cached ones included, must not count as the configured one's.
+    let server = MockServer::start().await;
+    Mock::given(method("POST"))
+        .and(path("/chat/completions"))
+        .respond_with(ResponseTemplate::new(200).set_body_json(serde_json::json!({
+            "choices": [ { "message": { "role": "assistant", "content": "echo real" } } ],
+            "usage": { "prompt_tokens": 10, "completion_tokens": 4 }
+        })))
+        .mount(&server)
+        .await;
+    let dir = tempdir().unwrap();
+    let cfg = dir.path().join("config.yaml");
+    let yaml = format!(
+        r#"
+providers:
+  openai: {{ api_key: sk-x, base_url: "{}" }}
+models:
+  default: {{ provider: openai, model: gpt-5-mini }}
+commit: {{ style: conventional, language: en, model: default }}
+"#,
+        server.uri()
+    );
+    std::fs::write(&cfg, yaml).unwrap();
+
+    // Returns whether the reply came from the cache.
+    let run = |mock: bool| {
+        let mut cmd = aish(dir.path(), &cfg, "echo mocked");
+        if !mock {
+            cmd.env_remove("AISH_PROVIDER");
+            // Reach the plain-http server directly, whatever proxy the runner
+            // sets for http URLs.
+            for var in ["ALL_PROXY", "all_proxy", "HTTP_PROXY", "http_proxy"] {
+                cmd.env_remove(var);
+            }
+        }
+        let out = cmd
+            .args(["--json", "run", "--print", "say hi"])
+            .assert()
+            .success()
+            .get_output()
+            .stdout
+            .clone();
+        let v: serde_json::Value = serde_json::from_slice(&out).expect("stdout is valid JSON");
+        v["cached"] == true
+    };
+    // Mock, then real, each once from the provider and once from the cache.
+    let runs = [true, true, false, false];
+    assert_eq!(runs.map(run), [false, true, false, true]);
+
+    let entries = audit_entries(dir.path());
+    let providers: Vec<_> = entries.iter().map(|e| e["provider"].clone()).collect();
+    assert_eq!(
+        providers,
+        ["mock", "mock", "openai", "openai"],
+        "got: {entries:?}"
+    );
+    assert!(
+        entries.iter().all(|e| e["model"] == "gpt-5-mini"),
+        "got: {entries:?}"
+    );
+}

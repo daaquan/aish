@@ -86,7 +86,7 @@ pub async fn run(
 
     let _ = crate::audit::record(&crate::audit::AuditEntry {
         tool: "git.pr.description.generate".into(),
-        provider: resolved.provider_name.clone(),
+        provider: generated.provider.clone(),
         model: resolved.model.clone(),
         prompt_tokens: usage.prompt_tokens,
         completion_tokens: usage.completion_tokens,

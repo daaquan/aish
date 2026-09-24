@@ -12,6 +12,9 @@ pub(crate) struct Generated {
     pub raw: String,
     pub usage: Usage,
     pub cached: bool,
+    /// The provider the reply came from, for the audit log: `mock` under the
+    /// test hook, otherwise the configured one.
+    pub provider: String,
 }
 
 /// Run `messages` through the cache and the resolved provider.
@@ -30,6 +33,12 @@ pub(crate) async fn generate(
     let cache_dir = crate::cache::cache_dir();
     let proxy = proxy_env(std::env::var);
     let cache_key = cache_key(resolved, &messages, mock.as_deref(), &proxy);
+    // Under the hook even a cache hit is the mock's reply: mock keys only ever
+    // hold mock replies.
+    let served_by = match mock {
+        Some(_) => "mock".to_string(),
+        None => resolved.provider_name.clone(),
+    };
 
     if let Some(hit) = (!no_cache)
         .then(|| crate::cache::get(&cache_dir, &cache_key))
@@ -42,6 +51,7 @@ pub(crate) async fn generate(
             raw: hit,
             usage: Usage::default(),
             cached: true,
+            provider: served_by,
         });
     }
 
@@ -66,6 +76,7 @@ pub(crate) async fn generate(
         raw: resp.content,
         usage: resp.usage.unwrap_or_default(),
         cached: false,
+        provider: served_by,
     })
 }
 

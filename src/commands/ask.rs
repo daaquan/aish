@@ -54,7 +54,7 @@ pub async fn run(
 
     let _ = crate::audit::record(&crate::audit::AuditEntry {
         tool: "ask.answer".into(),
-        provider: resolved.provider_name.clone(),
+        provider: generated.provider.clone(),
         model: resolved.model.clone(),
         prompt_tokens: generated.usage.prompt_tokens,
         completion_tokens: generated.usage.completion_tokens,
