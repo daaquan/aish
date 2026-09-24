@@ -201,6 +201,10 @@ pub fn build_config(providers: &[EnabledProvider], default_alias: &str) -> Confi
 
 /// Copy an existing config to `<path>.bak`. Returns the backup path if one was
 /// made, or None if there was no file to back up.
+///
+/// The backup holds the same plaintext keys as the config, so it is written
+/// owner-only like the config itself; `std::fs::copy` would carry a looser
+/// mode over from a hand-made original.
 fn back_up_existing(path: &Path) -> Result<Option<PathBuf>> {
     if !path.exists() {
         return Ok(None);
@@ -208,7 +212,8 @@ fn back_up_existing(path: &Path) -> Result<Option<PathBuf>> {
     let mut bak = path.as_os_str().to_owned();
     bak.push(".bak");
     let bak = PathBuf::from(bak);
-    std::fs::copy(path, &bak)
+    let contents = std::fs::read(path).with_context(|| format!("reading {}", path.display()))?;
+    write_secure(&bak, contents)
         .with_context(|| format!("backing up {} to {}", path.display(), bak.display()))?;
     Ok(Some(bak))
 }
@@ -359,6 +364,24 @@ mod tests {
             "round-tripped config should have no errors: {:?}",
             reloaded.validate()
         );
+    }
+
+    /// The backup keeps the old plaintext keys, so a world-readable original
+    /// must not yield a world-readable `.bak`.
+    #[cfg(unix)]
+    #[test]
+    fn backup_is_owner_only_even_when_the_original_is_not() {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let cfg = dir.path().join("config.yaml");
+        std::fs::write(&cfg, "providers:\n  openai: { api_key: sk-old }\n").unwrap();
+        std::fs::set_permissions(&cfg, std::fs::Permissions::from_mode(0o644)).unwrap();
+
+        let bak = back_up_existing(&cfg).unwrap().expect("backup made");
+
+        let mode = std::fs::metadata(&bak).unwrap().permissions().mode() & 0o777;
+        assert_eq!(mode, 0o600, "backup left at {mode:o}");
+        assert_eq!(std::fs::read(&bak).unwrap(), std::fs::read(&cfg).unwrap());
     }
 
     #[test]
