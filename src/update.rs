@@ -21,14 +21,17 @@ pub const REPO: &str = "daaquan/aish";
 /// Note for anyone running the e2e suite under `--release`: the hooks are off
 /// there, so those tests are debug-profile only.
 pub fn endpoint_base(var: &str, default: &str) -> String {
-    #[cfg(debug_assertions)]
-    if let Ok(v) = std::env::var(var) {
-        if !v.is_empty() {
+    endpoint_base_with(cfg!(debug_assertions), var, default)
+}
+
+/// [`endpoint_base`] with the build-profile switch as a parameter, so the
+/// release behaviour (`honour_env == false`) is unit-tested in every profile.
+fn endpoint_base_with(honour_env: bool, var: &str, default: &str) -> String {
+    if honour_env {
+        if let Some(v) = std::env::var(var).ok().filter(|v| !v.is_empty()) {
             return v;
         }
     }
-    #[cfg(not(debug_assertions))]
-    let _ = var;
     default.to_string()
 }
 
@@ -157,27 +160,31 @@ mod tests {
     /// ignore them, or anything that can set an environment variable can point
     /// a self-update download at a host of its choosing.
     #[test]
-    fn endpoint_base_falls_back_to_the_compiled_in_default() {
-        std::env::remove_var("AISH_TEST_ENDPOINT_BASE");
-        assert_eq!(
-            endpoint_base("AISH_TEST_ENDPOINT_BASE", "https://api.github.com"),
-            "https://api.github.com"
-        );
-    }
-
-    #[test]
     fn endpoint_base_honours_the_override_only_in_debug_builds() {
-        std::env::set_var("AISH_TEST_ENDPOINT_BASE_2", "http://127.0.0.1:9999");
-        let got = endpoint_base("AISH_TEST_ENDPOINT_BASE_2", "https://api.github.com");
-        std::env::remove_var("AISH_TEST_ENDPOINT_BASE_2");
-        if cfg!(debug_assertions) {
-            assert_eq!(got, "http://127.0.0.1:9999", "test hook must work in tests");
+        const VAR: &str = "AISH_TEST_ENDPOINT_BASE";
+        const DEFAULT: &str = "https://api.github.com";
+        const HOOK: &str = "http://127.0.0.1:9999";
+
+        std::env::remove_var(VAR);
+        let unset = endpoint_base_with(true, VAR, DEFAULT);
+        std::env::set_var(VAR, "");
+        let empty = endpoint_base_with(true, VAR, DEFAULT);
+        std::env::set_var(VAR, HOOK);
+        let release = endpoint_base_with(false, VAR, DEFAULT);
+        let debug = endpoint_base_with(true, VAR, DEFAULT);
+        let this_build = endpoint_base(VAR, DEFAULT);
+        std::env::remove_var(VAR);
+
+        assert_eq!(unset, DEFAULT);
+        assert_eq!(empty, DEFAULT);
+        assert_eq!(release, DEFAULT, "release build honoured the env hook");
+        assert_eq!(debug, HOOK, "test hook must work in debug builds");
+        let expected = if cfg!(debug_assertions) {
+            HOOK
         } else {
-            assert_eq!(
-                got, "https://api.github.com",
-                "release build honoured env hook"
-            );
-        }
+            DEFAULT
+        };
+        assert_eq!(this_build, expected);
     }
 
     #[test]
