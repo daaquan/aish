@@ -24,15 +24,12 @@ build-test:
   stage: test
   before_script:
     - rustup component add clippy rustfmt
-    - git clone --depth 1 --branch v0.2.0 https://gitlab.com/daaquan/aish-plugins.git "$CI_PROJECT_DIR/aish-plugins"
   script:
     - cargo fmt --all -- --check
     - cargo clippy --all-targets -- -D warnings
     - cargo test --all
     # Release-profile endpoint gate; see the comment in ci.yml.
     - cargo test --release --lib update::
-  variables:
-    AISH_PLUGINS_DIR: "$CI_PROJECT_DIR/aish-plugins"
 
 # Mirror of audit.yml: scan Cargo.lock against the RustSec advisory DB.
 audit:
