@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Status
 
-Working CLI (v0.9.x). An AI copilot for the command line: built-in
+Working CLI (v0.13.x). An AI copilot for the command line: built-in
 subcommands (`commit`, `pr`, `review`, `changelog`, `ask`, `fix`, `run`, …) wrap
 everyday developer commands and use configurable model providers to draft clean
 summaries, diagnose failures, and turn intent into commands.
@@ -48,9 +48,12 @@ system, by decision. Do not propose a plugin architecture.
 - `src/provider/` — `Provider` trait (`chat`) with Anthropic, OpenAI-compatible
   (incl. Ollama/Kilo), Gemini, mock, and a retry decorator. Selected via model
   aliases in config.
-- `src/config/` — `~/.aish/config.yaml` (override `$AISH_CONFIG`): providers,
-  model aliases, commit settings, pricing; `validate()` powers
-  `aish config check`; `resolve.rs` maps alias → provider + model.
+- `src/config/` — `config.yaml` in the data dir (`$AISH_HOME`, default
+  `~/.aish`; `$AISH_CONFIG` overrides the file): providers, model aliases,
+  commit settings, pricing; `validate()` powers `aish config check`;
+  `resolve.rs` maps alias → provider + model.
+- `src/paths.rs` — resolves the data dir (config, cache, audit log), plus the
+  helpers that create dirs and files owner-only on unix.
 - `src/cache.rs` / `src/audit.rs` / `src/usage.rs` — deterministic response
   cache, JSONL audit log, and `aish usage` cost summaries over that log.
 - `tests/commit_e2e.rs` — end-to-end commit flows via `assert_cmd` with
