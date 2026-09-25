@@ -204,6 +204,13 @@ Binaries installed via `cargo install` are detected and left alone — use
 there instead, adding `--root <root>` for an install made with
 `cargo install --root <root>` (aish prints the exact command).
 
+On Windows, which does not let a running program delete its own file,
+`aish uninstall` usually cannot remove the binary. It then stops there with an
+error and removes nothing, not even with `--purge`. Once aish has exited,
+delete the binary by hand, and the data dir too if you want it gone
+(`%USERPROFILE%\.aish` unless `$AISH_HOME` is set, plus what it points to if it
+is a symlink).
+
 ## Contributing
 
 See [`CONTRIBUTING.md`](CONTRIBUTING.md) and the [`CODE_OF_CONDUCT.md`](CODE_OF_CONDUCT.md).
