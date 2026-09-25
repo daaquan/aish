@@ -29,7 +29,7 @@ build-test:
     - cargo clippy --all-targets -- -D warnings
     - cargo test --all
     # Release-profile endpoint gate; see the comment in ci.yml.
-    - cargo test --release --lib update::
+    - cargo test --release --lib "update::"
 
 # Mirror of audit.yml: scan Cargo.lock against the RustSec advisory DB.
 audit:

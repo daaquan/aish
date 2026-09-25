@@ -14,4 +14,4 @@ jobs:
       # Shipped binaries are release builds, where update::endpoint_base must
       # ignore the AISH_UPDATE_* overrides. The debug runs above only ever see
       # cfg!(debug_assertions) as true, so only this run checks that wiring.
-      - run: cargo test --release --lib update::
+      - run: cargo test --release --lib "update::"
