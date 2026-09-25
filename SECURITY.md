@@ -60,11 +60,23 @@ Out of scope:
 
 In scope, though, is anything in aish that turns partial control over a
 single invocation, such as a wrapper or CI job that lets a caller set a few of
-its environment variables (`HTTP_PROXY`, `AISH_CONFIG`), into an effect on
-later invocations, or escalates it: for example redirecting a self-update
-(which is why the `AISH_UPDATE_*` endpoint overrides are compiled out of
-release builds), or one invocation planting a cache entry that later ones
-trust.
+its environment variables (`HTTP_PROXY` and the like, or an API key variable
+the config interpolates), into an effect on later invocations, or escalates
+it: for example redirecting a self-update (which is why the `AISH_UPDATE_*`
+endpoint overrides are compiled out of release builds), or one invocation
+planting a cache entry that later ones trust.
+
+Picking the config file, by contrast, is config-level control, not partial
+control. Its `${VAR}` interpolation reads any environment variable by name,
+and aish sends the values, as the `api_key` or inside the URL, with the
+invocation's prompts and diffs to whatever `base_url` the file names. So
+whoever picks the config file — the one `$AISH_CONFIG` names or else
+`config.yaml` in the data dir (`$AISH_HOME`, default `~/.aish`) — decides
+where your prompts, diffs and every variable it names are sent: treat it like
+your shell rc, and never let an untrusted caller set `$AISH_CONFIG`,
+`$AISH_HOME` or `$HOME`, which moves `~`. An effect such an invocation has on
+later ones that use your own config, such as a planted cache entry, is still
+in scope.
 
 ## Security model and user responsibilities
 
@@ -90,11 +102,12 @@ model provider you configure. Treat that as disclosure to a third party.
   `~/...`) and uses `~/.aish`, so in that case run `chmod 700 ~/.aish`.
   `aish cache clear` empties the cache; it asks first and treats
   non-interactive input as "no", so pass `--yes` when running it from a script.
-- **Cache keys** cover the provider name, its endpoint (`base_url`), the proxy
-  settings the request is sent with (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY`
-  and `NO_PROXY` in either case, and whether `REQUEST_METHOD` is set, which
-  turns them off), the model, and every message, so one invocation's
-  `$AISH_CONFIG` or proxy variable does not decide what later ones are
+- **Cache keys** cover the provider name, its endpoint (`base_url`), a
+  SHA-256 hash of its API key (never the key itself), the proxy settings the
+  request is sent with (`HTTP_PROXY`, `HTTPS_PROXY`, `ALL_PROXY` and
+  `NO_PROXY` in either case, and whether `REQUEST_METHOD` is set, which turns
+  them off), the model, and every message, so one invocation's
+  `$AISH_CONFIG`, API key or proxy variable does not decide what later ones are
   served. aish never uses the operating system's proxy settings. The key does
   not cover name resolution: where the host name a plain-http request
   connects to — the `base_url`'s or, when a proxy applies, the proxy's — is
