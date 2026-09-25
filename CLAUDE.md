@@ -33,6 +33,7 @@ build:  cargo build
 test:   cargo test --all
 lint:   cargo clippy --all-targets -- -D warnings && cargo fmt --all -- --check
 single test: cargo test <name> -- --test-threads=1
+release: cargo test --release --lib update::   # CI: release-only endpoint gate
 ```
 
 ## Architecture
@@ -40,9 +41,16 @@ single test: cargo test <name> -- --test-threads=1
 Single Rust binary. Tools are **built-in subcommands** — there is no plugin
 system, by decision. Do not propose a plugin architecture.
 
-- `src/main.rs` — CLI dispatch; `run_commit` drives the commit flow
-  (staged diff → provider → confirm/edit loop → `git commit`).
+- `src/main.rs` — parses `Cli` and forwards it to `aish::commands::run`.
 - `src/cli.rs` — clap definitions. Global `--json` and `--verbose` flags.
+- `src/commands/` — `mod.rs` dispatches each subcommand, mostly to a module
+  of its own. Each generating command's module does the I/O (config, git,
+  confirm prompts, output, audit) around `tool/`: `commands/commit.rs`
+  drives the commit flow (staged diff → provider → confirm/edit loop →
+  `git commit`), and `generate.rs` is the cache/provider pipeline they all
+  share. `setup`, `config`, `cache`, `update` and `uninstall` have no
+  `tool/` behind them; the last two are CLI glue over the core logic in
+  `src/update.rs` / `src/uninstall.rs`.
 - `src/tool/` — built-in tool logic; `tool/commit.rs` builds the prompt and
   post-processes the model reply. New tools go here.
 - `src/provider/` — `Provider` trait (`chat`) with Anthropic, OpenAI-compatible
