@@ -9,6 +9,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.13.1] — 2026-09-25
+
+### Fixed
+
+- The data dir is resolved in one place and `$AISH_HOME` is honoured
+  everywhere; a blank `$AISH_CONFIG` is ignored. The dir is created mode
+  `0700` and its files `0600`.
+- An existing config is made owner-only before keys are written; `aish setup`
+  writes the backup owner-only and never overwrites an existing backup.
+- Edit buffers (`$VISUAL` / `$EDITOR`) are created exclusively and owner-only.
+- Cache keys use SHA-256 and include the request's origin, proxy, and a hash
+  of the API key, so a reply from one endpoint, key, or proxy cannot be served
+  to another.
+- The audit log appends each JSONL line in one write; mock replies are
+  recorded as provider `mock`. `aish run` records the planned command before
+  executing it.
+- `aish update --version` rejects anything that is not a plain `X.Y.Z`. Cargo
+  installs (including `$CARGO_HOME` and `--root`) are detected and left alone,
+  with a `cargo install --git` hint.
+- `aish uninstall --purge` refuses paths that escape home via `..` or
+  symlinks, follows a symlinked data dir to the real directory, and tells
+  Windows users when the running binary cannot be deleted.
+
+### Changed
+
+- `--json` on `aish run` skips the confirm prompt, matching the other
+  generating commands.
+
 ## [0.13.0] — 2026-07-01
 
 ### Added
@@ -257,7 +285,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `install.sh` install script and project governance foundation
   (`CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, design specs).
 
-[Unreleased]: https://github.com/daaquan/aish/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/daaquan/aish/compare/v0.13.1...HEAD
+[0.13.1]: https://github.com/daaquan/aish/compare/v0.13.0...v0.13.1
+[0.13.0]: https://github.com/daaquan/aish/compare/v0.12.0...v0.13.0
+[0.12.0]: https://github.com/daaquan/aish/compare/v0.11.0...v0.12.0
+[0.11.0]: https://github.com/daaquan/aish/compare/v0.10.0...v0.11.0
+[0.10.0]: https://github.com/daaquan/aish/compare/v0.9.0...v0.10.0
+[0.9.0]: https://github.com/daaquan/aish/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/daaquan/aish/compare/v0.7.1...v0.8.0
 [0.7.1]: https://github.com/daaquan/aish/compare/v0.7.0...v0.7.1
 [0.7.0]: https://github.com/daaquan/aish/compare/v0.6.0...v0.7.0
