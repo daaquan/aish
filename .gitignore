@@ -1,7 +1,5 @@
 .codegraph
 /target
-tests/fixtures/fake-plugin/target
-tests/fixtures/fake-plugin/Cargo.lock
 .agents/
 .claude/
 skills-lock.json
