@@ -84,19 +84,25 @@ mod tests {
 
     #[test]
     fn purge_rejects_dangerous_paths() {
-        // Absolute on every platform, so each case reaches the check it is
-        // for: `/`-rooted literals have no drive letter on Windows, where the
-        // relative-path guard would reject them all first.
+        // Absolute on every platform, so no case is refused as relative by
+        // accident: `/`-rooted literals have no drive letter on Windows, where
+        // the relative-path guard would reject them all first.
         let home = &absolute_home();
         let root = home.ancestors().last().unwrap();
-        assert!(validate_purge_path(Path::new(""), home).is_err());
-        assert!(validate_purge_path(root, home).is_err());
-        assert!(validate_purge_path(home, home).is_err());
+        let refused = |dir: &Path, why: &str| {
+            let err = validate_purge_path(dir, home).unwrap_err();
+            assert!(err.contains(why), "{}: {err}", dir.display());
+        };
+        let (not_dedicated, outside) = ("not a dedicated data dir", "outside home directory");
+        refused(Path::new(""), "empty path");
+        // Only unix's root is `/`; the outside-home check refuses `C:\`.
+        refused(root, if cfg!(unix) { not_dedicated } else { outside });
+        refused(home, not_dedicated);
         // Outside home: a typo'd $AISH_HOME must not nuke system dirs.
-        assert!(validate_purge_path(&root.join("etc"), home).is_err());
-        assert!(validate_purge_path(&root.join("srv").join("aish-data"), home).is_err());
+        refused(&root.join("etc"), outside);
+        refused(&root.join("srv").join("aish-data"), outside);
         // Relative paths are ambiguous — reject.
-        assert!(validate_purge_path(Path::new(".aish"), home).is_err());
+        refused(Path::new(".aish"), "relative path");
     }
 
     /// An absolute home on every platform (`/home/u` has no drive letter on
