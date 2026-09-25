@@ -23,6 +23,7 @@ dependencies = [
  "dirs",
  "predicates",
  "reqwest",
+ "ring",
  "rpassword",
  "serde",
  "serde_json",

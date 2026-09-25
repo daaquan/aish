@@ -6,24 +6,17 @@
 //! regenerating a commit message for the same staged diff — reuse the stored
 //! response and skip the network call.
 //!
-//! FNV-1a is used instead of [`std::hash`] because its result must stay stable
-//! across Rust versions and platforms; `DefaultHasher` makes no such promise.
+//! The hash is SHA-256. Unlike [`std::hash`]'s `DefaultHasher` its result
+//! stays the same across Rust versions and platforms, and unlike a fast hash
+//! such as FNV-1a it is collision resistant. That matters because some fields
+//! may be someone else's choice: the endpoint and proxy come from one
+//! invocation's `$AISH_CONFIG` and proxy variables, and under FNV-1a those
+//! could be crafted to give the key of a later, predictable request, planting
+//! the reply it is served.
 
 use crate::provider::{Message, Role};
+use ring::digest::{digest, SHA256};
 use std::path::{Path, PathBuf};
-
-const FNV_OFFSET: u64 = 0xcbf29ce484222325;
-const FNV_PRIME: u64 = 0x00000100000001b3;
-
-/// FNV-1a 64-bit hash. Deterministic across runs, versions, and platforms.
-fn fnv1a(bytes: &[u8]) -> u64 {
-    let mut hash = FNV_OFFSET;
-    for &b in bytes {
-        hash ^= b as u64;
-        hash = hash.wrapping_mul(FNV_PRIME);
-    }
-    hash
-}
 
 fn role_tag(role: Role) -> &'static str {
     match role {
@@ -33,7 +26,8 @@ fn role_tag(role: Role) -> &'static str {
     }
 }
 
-/// Deterministic cache key (16 hex chars) for a chat request.
+/// Deterministic cache key (64 hex chars, the whole SHA-256) for a chat
+/// request.
 ///
 /// `endpoint` is where the reply comes from. A provider name is just a config
 /// key that can point anywhere, so without it a reply fetched from one server
@@ -51,7 +45,7 @@ pub fn request_key(
     messages: &[Message],
 ) -> String {
     let mut buf = String::new();
-    buf.push_str("aish-cache-v3\n");
+    buf.push_str("aish-cache-v4\n");
     for field in [provider, endpoint, proxy, model] {
         buf.push_str(&field.len().to_string());
         buf.push('\n');
@@ -66,7 +60,8 @@ pub fn request_key(
         buf.push_str(&m.content);
         buf.push('\n');
     }
-    format!("{:016x}", fnv1a(buf.as_bytes()))
+    let hash = digest(&SHA256, buf.as_bytes());
+    hash.as_ref().iter().map(|b| format!("{b:02x}")).collect()
 }
 
 /// Default cache directory: `cache` in the data dir (`$AISH_HOME`, default
@@ -151,7 +146,20 @@ mod tests {
         let a = key("openai", OPENAI, "gpt-5-mini", "diff --git a/x");
         let b = key("openai", OPENAI, "gpt-5-mini", "diff --git a/x");
         assert_eq!(a, b);
-        assert_eq!(a.len(), 16);
+        assert_eq!(a.len(), 64);
+        assert!(a.bytes().all(|c| matches!(c, b'0'..=b'9' | b'a'..=b'f')));
+    }
+
+    #[test]
+    fn key_is_the_sha256_of_the_length_prefixed_request() {
+        // Pinned, since a key must not change across aish or Rust versions
+        // unless the layout tag does. Computed outside aish with
+        // printf 'aish-cache-v4\n1\np\n1\ne\n0\n\n1\nm\nuser\n2\nhi\n' | sha256sum
+        let key = request_key("p", "e", "", "m", &[Message::user("hi")]);
+        assert_eq!(
+            key,
+            "c1ebc7769efbf6d90f2df4f81b50e822833985a28d6cbf536fca68e043bf35d2"
+        );
     }
 
     #[test]
