@@ -97,12 +97,14 @@ fn mock_reply() -> Option<String> {
 ///
 /// A real reply comes from the provider's `base_url` (empty for the adapter's
 /// default), which its name alone does not pin down, through the proxy
-/// settings in `proxy` ([`proxy_env`]). How the host name resolves is not
-/// covered: for a plain-http host looked up in DNS, resolver variables such as
-/// glibc's `HOSTALIASES` can still send one invocation's request elsewhere. A
-/// mock reply comes from `$AISH_MOCK_REPLY`, which takes the endpoint's place,
-/// and no proxy is involved; mock keys are also prefixed, and real keys are
-/// bare hex, so no mock entry can name a real one.
+/// settings in `proxy` ([`proxy_env`]). How host names resolve is not covered:
+/// where the host a plain-http request connects to, the `base_url`'s or, when
+/// a proxy applies, the proxy's, is looked up in DNS, resolver variables such
+/// as glibc's `HOSTALIASES` can still send one invocation's request elsewhere,
+/// even for a `base_url` of `localhost`. A mock reply comes from
+/// `$AISH_MOCK_REPLY`, which takes the endpoint's place, and no proxy is
+/// involved; mock keys are also prefixed, and real keys are bare hex, so no
+/// mock entry can name a real one.
 fn cache_key(
     resolved: &Resolved<'_>,
     messages: &[Message],

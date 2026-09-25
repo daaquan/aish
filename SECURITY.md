@@ -53,15 +53,18 @@ Out of scope:
 - vulnerabilities in third-party crates — report upstream, though telling us
   so we can bump the dependency is welcome
 - attacks by someone who already runs code as you, controls your shell or the
-  environment variables an `aish` invocation sees, or can write files in the
+  whole environment an `aish` invocation sees (which includes `LD_PRELOAD` and
+  the like, so it amounts to running code as you), or can write files in the
   data dir (`$AISH_HOME`, default `~/.aish`) such as `config.yaml` or cache
   entries — anything that access already lets them do directly
 
-In scope, though, is anything in aish that turns control over a single
-invocation, such as its environment variables, into an effect on later
-invocations, or escalates it: for example redirecting a self-update (which is
-why the `AISH_UPDATE_*` endpoint overrides are compiled out of release
-builds), or one invocation planting a cache entry that later ones trust.
+In scope, though, is anything in aish that turns partial control over a
+single invocation, such as a wrapper or CI job that lets a caller set a few of
+its environment variables (`HTTP_PROXY`, `AISH_CONFIG`), into an effect on
+later invocations, or escalates it: for example redirecting a self-update
+(which is why the `AISH_UPDATE_*` endpoint overrides are compiled out of
+release builds), or one invocation planting a cache entry that later ones
+trust.
 
 ## Security model and user responsibilities
 
@@ -93,12 +96,13 @@ model provider you configure. Treat that as disclosure to a third party.
   turns them off), the model, and every message, so one invocation's
   `$AISH_CONFIG` or proxy variable does not decide what later ones are
   served. aish never uses the operating system's proxy settings. The key does
-  not cover name resolution: where a plain-http `base_url`'s host name is
+  not cover name resolution: where the host name a plain-http request
+  connects to — the `base_url`'s or, when a proxy applies, the proxy's — is
   looked up in DNS, resolver variables such as glibc's `HOSTALIASES`,
   `LOCALDOMAIN` and `RES_OPTIONS` can send one invocation's request, and so
   the reply cached for later ones, to another server. An HTTPS endpoint's
-  certificate check rules that out, and an IP address or a name `/etc/hosts`
-  answers, such as `localhost`, is not affected.
+  certificate check rules that out, and a direct request to an IP address or
+  to a name `/etc/hosts` answers, such as `localhost`, is not affected.
 - **`aish run`** turns your prompt into a shell command and runs it after a
   confirm prompt. Read what is proposed before confirming. Both `--yes` and the
   global `--json` flag skip that prompt and run the command immediately, so
