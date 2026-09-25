@@ -19,7 +19,8 @@ aish commit --apply    # generate and commit without prompting
 aish commit --signoff  # add a DCO Signed-off-by trailer
 ```
 
-Answering `e` opens `$EDITOR` on the suggestion and re-asks with the edited
+Answering `e` opens your editor (`$VISUAL`, else `$EDITOR`, else `vi`) on the
+suggestion and re-asks with the edited
 message. Identical requests (same diff, model, style, language, provider
 endpoint and proxy settings) are served from a local cache without a model
 call (`--no-cache` to bypass).
@@ -53,7 +54,7 @@ aish pr --apply        # generate and run `gh pr create` without prompting
 aish pr --base develop # diff against a specific base branch
 ```
 
-Like `aish commit`, answering `e` opens `$EDITOR` (first line = title, rest =
+Like `aish commit`, answering `e` opens your editor (first line = title, rest =
 body), responses are cached (`--no-cache` to bypass), and `--model` / `--lang`
 override the config.
 
