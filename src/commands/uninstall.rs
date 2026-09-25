@@ -49,10 +49,14 @@ pub fn run(purge: bool, yes: bool, json: bool) -> Result<()> {
         return Ok(());
     }
 
+    // The binary goes before the data dir, so a binary that stays, as it does
+    // on Windows, leaves the install untouched instead of half-removed.
     std::fs::remove_file(&exe).map_err(|e| {
+        let unpurged = (purge && data.exists()).then(|| data_label(&data, link_target.as_deref()));
         anyhow!(
-            "cannot remove {}: {e}; try `sudo aish uninstall`",
-            exe.display()
+            "cannot remove {}: {e}; {}",
+            exe.display(),
+            remove_exe_hint(cfg!(windows), unpurged.as_deref())
         )
     })?;
 
@@ -152,10 +156,9 @@ fn confirm(
 ) -> Result<bool> {
     println!("This will remove: {}", exe.display());
     if let Some((dir, target)) = purge {
-        let target = target.map_or(String::new(), |t| format!(" -> {}", t.display()));
         println!(
-            "          and purge: {}{target} ({})",
-            dir.display(),
+            "          and purge: {} ({})",
+            data_label(dir, target),
             human_size(dir_size(dir))
         );
     }
@@ -167,4 +170,69 @@ fn confirm(
         return Ok(false);
     }
     Ok(matches!(input.trim().to_lowercase().as_str(), "y" | "yes"))
+}
+
+/// The data dir as the prompt and the errors name it: with the tree it points
+/// to when it is a symlink, since the purge deletes that too.
+fn data_label(dir: &std::path::Path, target: Option<&std::path::Path>) -> String {
+    match target {
+        Some(target) => format!("{} -> {}", dir.display(), target.display()),
+        None => dir.display().to_string(),
+    }
+}
+
+/// What to do about a binary that could not be removed. `unpurged` is the
+/// data dir `--purge` would have deleted next. Windows refuses to delete a
+/// running program's file whatever the privileges, so `sudo` is no help
+/// there: the file can only go after aish has exited, by hand.
+fn remove_exe_hint(windows: bool, unpurged: Option<&str>) -> String {
+    if !windows {
+        return "try `sudo aish uninstall`".into();
+    }
+    let mut hint = String::from(
+        "Windows does not let a running program delete itself: delete it after aish exits",
+    );
+    if let Some(dir) = unpurged {
+        hint += &format!(", and {dir} too, which was not purged");
+    }
+    hint
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    #[test]
+    fn remove_exe_hint_suggests_sudo_off_windows() {
+        for unpurged in [None, Some("/home/u/.aish")] {
+            assert_eq!(
+                remove_exe_hint(false, unpurged),
+                "try `sudo aish uninstall`"
+            );
+        }
+    }
+
+    #[test]
+    fn remove_exe_hint_on_windows_says_to_delete_by_hand() {
+        let hint = remove_exe_hint(true, None);
+        assert!(hint.ends_with("delete it after aish exits"), "{hint}");
+        assert!(!hint.contains("sudo"), "{hint}");
+        // Nothing was purged either, and the hint says what is left.
+        let hint = remove_exe_hint(true, Some(r"C:\Users\u\.aish"));
+        assert!(
+            hint.ends_with(r"after aish exits, and C:\Users\u\.aish too, which was not purged"),
+            "{hint}"
+        );
+    }
+
+    #[test]
+    fn data_label_shows_where_a_symlinked_data_dir_points() {
+        let dir = Path::new("/home/u/.aish");
+        assert_eq!(data_label(dir, None), "/home/u/.aish");
+        assert_eq!(
+            data_label(dir, Some(Path::new("/home/u/dotfiles/aish"))),
+            "/home/u/.aish -> /home/u/dotfiles/aish"
+        );
+    }
 }
