@@ -7,6 +7,33 @@
 > draft clean summaries, diagnose failures, and turn intent into commands, all as
 > built-in subcommands.
 
+## Install
+
+Prebuilt binaries are published for Linux (x86_64, aarch64) and macOS (arm64):
+
+```bash
+curl -fsSL https://openaish.com/install.sh | bash
+```
+
+The script downloads the matching binary from the
+[latest release](https://github.com/daaquan/aish/releases/latest) into
+`/usr/local/bin` (or `~/.local/bin` if that is not writable). Override with:
+
+```bash
+curl -fsSL https://openaish.com/install.sh | AISH_VERSION=v0.13.1 bash      # pin a release
+curl -fsSL https://openaish.com/install.sh | AISH_INSTALL_DIR=~/bin bash    # choose the dir
+```
+
+Or download a binary from the [releases page](https://github.com/daaquan/aish/releases)
+yourself, or build from source (Rust toolchain required):
+
+```bash
+cargo install --git https://github.com/daaquan/aish
+```
+
+Then run `aish setup` to configure a provider. Update later with
+`aish update` (see [Updating & uninstalling](#updating--uninstalling)).
+
 ## Commit messages
 
 `aish commit` generates a commit message from your staged diff and asks
