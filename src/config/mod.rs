@@ -132,9 +132,10 @@ impl Config {
     }
 
     pub fn from_yaml(raw: &str) -> Result<Self, ConfigError> {
-        let expanded = expand_env(raw)?;
-        let mut cfg: Config =
-            serde_yaml::from_str(&expanded).map_err(|e| ConfigError::Parse(e.to_string()))?;
+        let (text, env) = EnvRefs::extract(raw)?;
+        let mut cfg: Config = serde_yaml::from_str(&text)
+            .map_err(|e| ConfigError::Parse(env.restore(&e.to_string())))?;
+        env.expand_config(&mut cfg)?;
         for p in cfg.providers.values_mut() {
             if p.api_key
                 .as_deref()
@@ -288,24 +289,177 @@ commit:
     }
 }
 
-/// Expand `${VAR}` occurrences. Missing variable → empty string (validated later when the
-/// provider is actually used). Unterminated `${` → Parse error.
-fn expand_env(input: &str) -> Result<String, ConfigError> {
-    let mut out = String::with_capacity(input.len());
-    let mut rest = input;
-    while let Some(start) = rest.find("${") {
-        out.push_str(&rest[..start]);
-        let after = &rest[start + 2..];
-        let end = after
-            .find('}')
-            .ok_or_else(|| ConfigError::Parse("unterminated ${ in config".into()))?;
-        let var = &after[..end];
-        let val = std::env::var(var).unwrap_or_default(); // missing var → empty; validated later when the provider is actually used
-        out.push_str(&val);
-        rest = &after[end + 1..];
+/// `${VAR}` references of a config file, expanded only inside the string
+/// fields that name them.
+///
+/// Substituting values into the raw text let a value's YAML syntax (`,`,
+/// `}`, `: `, a newline, `#`) add keys or override other settings, so
+/// whoever controlled one interpolated variable, such as an API key,
+/// controlled the whole config. Now each reference becomes an inert
+/// placeholder, the YAML is parsed into [`Config`] as before (same typing,
+/// same error locations), and the values replace the placeholders only in
+/// `Config`'s string fields and map keys. Placeholders are plain
+/// alphanumerics, valid wherever `${VAR}` may be written, including unquoted
+/// in the template's flow mappings.
+///
+/// A value is trimmed, and loses one pair of surrounding quotes, as reading
+/// it as a plain YAML scalar used to do (a CRLF `.env` file, docker's
+/// `--env-file` keeping `KEY="sk-..."` quotes). An empty value or a plain
+/// number cannot carry YAML syntax, so it is still pasted into the text:
+/// a missing variable still reads as an empty field (validated later when the
+/// provider is actually used) and `${PRICE}` still works in a numeric field.
+/// Unterminated `${` → Parse error.
+struct EnvRefs {
+    /// Absent from the input, so every placeholder in the parsed strings is
+    /// ours — unless the config's own author spells one with a YAML escape
+    /// (`"\x61ishenv..."`), which interpolates nothing they could not name.
+    prefix: String,
+    /// `(name, value)` per placeholder, in order.
+    refs: Vec<(String, String)>,
+}
+
+/// Digits after the prefix: fixed, so a placeholder followed by digits in
+/// the same scalar still ends where it should.
+const ENV_REF_DIGITS: usize = 6;
+
+impl EnvRefs {
+    /// Replace every `${VAR}` in `input` with a placeholder (or its inert
+    /// value), reading VAR now.
+    fn extract(input: &str) -> Result<(String, Self), ConfigError> {
+        // Its only `a` is the first letter, so no placeholder can also match
+        // starting inside the text in front of it.
+        let mut prefix = String::from("aishenv");
+        while input.contains(&prefix) {
+            prefix.push('x');
+        }
+        let mut out = String::with_capacity(input.len());
+        let mut refs = Vec::new();
+        let mut rest = input;
+        while let Some(start) = rest.find("${") {
+            out.push_str(&rest[..start]);
+            let after = &rest[start + 2..];
+            let end = after
+                .find('}')
+                .ok_or_else(|| ConfigError::Parse("unterminated ${ in config".into()))?;
+            let name = &after[..end];
+            let value = scalar_text(&std::env::var(name).unwrap_or_default()).to_string();
+            if is_inert(&value) {
+                out.push_str(&value);
+            } else {
+                out.push_str(&format!("{prefix}{:0ENV_REF_DIGITS$}", refs.len()));
+                refs.push((name.to_string(), value));
+            }
+            rest = &after[end + 1..];
+        }
+        out.push_str(rest);
+        Ok((out, Self { prefix, refs }))
     }
-    out.push_str(rest);
-    Ok(out)
+
+    /// Put the values into every string field and map key of `cfg`. A
+    /// placeholder left anywhere after that sat in a field this does not
+    /// know, e.g. a number: refuse the config rather than use it verbatim.
+    fn expand_config(&self, cfg: &mut Config) -> Result<(), ConfigError> {
+        if self.refs.is_empty() {
+            return Ok(());
+        }
+        self.expand_keys(&mut cfg.providers, |p| {
+            for s in [&mut p.api_key, &mut p.base_url].into_iter().flatten() {
+                self.expand(s);
+            }
+        });
+        self.expand_keys(&mut cfg.models, |m| {
+            self.expand(&mut m.provider);
+            self.expand(&mut m.model);
+        });
+        let commit = &mut cfg.commit;
+        for s in [&mut commit.style, &mut commit.language, &mut commit.model] {
+            self.expand(s);
+        }
+        if let Some(s) = &mut commit.instructions {
+            self.expand(s);
+        }
+        self.expand_keys(&mut cfg.pricing, |_| {});
+
+        let leftover = serde_yaml::to_string(cfg).is_ok_and(|s| s.contains(&self.prefix));
+        if leftover {
+            return Err(ConfigError::Parse(
+                "`${VAR}` is only supported in text fields and names".into(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn expand_keys<V>(&self, map: &mut BTreeMap<String, V>, mut each: impl FnMut(&mut V)) {
+        *map = std::mem::take(map)
+            .into_iter()
+            .map(|(mut key, mut value)| {
+                self.expand(&mut key);
+                each(&mut value);
+                (key, value)
+            })
+            .collect();
+    }
+
+    fn expand(&self, s: &mut String) {
+        if s.contains(&self.prefix) {
+            *s = self.replace(s, |(_, value)| value.clone());
+        }
+    }
+
+    /// `text` with each placeholder spelled back as the `${VAR}` it stands
+    /// for, so parse errors show what the user wrote.
+    fn restore(&self, text: &str) -> String {
+        self.replace(text, |(name, _)| format!("${{{name}}}"))
+    }
+
+    fn replace(&self, s: &str, with: impl Fn(&(String, String)) -> String) -> String {
+        let mut out = String::with_capacity(s.len());
+        let mut rest = s;
+        while let Some(start) = rest.find(&self.prefix) {
+            let end = start + self.prefix.len();
+            let found = rest
+                .get(end..end + ENV_REF_DIGITS)
+                .and_then(|digits| digits.parse::<usize>().ok())
+                .and_then(|index| self.refs.get(index));
+            match found {
+                Some(r) => {
+                    out.push_str(&rest[..start]);
+                    out.push_str(&with(r));
+                    rest = &rest[end + ENV_REF_DIGITS..];
+                }
+                None => {
+                    out.push_str(&rest[..end]);
+                    rest = &rest[end..];
+                }
+            }
+        }
+        out.push_str(rest);
+        out
+    }
+}
+
+/// A variable's value as a plain YAML scalar would have read it: trimmed,
+/// without one pair of surrounding quotes.
+fn scalar_text(value: &str) -> &str {
+    let value = value.trim();
+    for quote in ['"', '\''] {
+        if let Some(inner) = value
+            .strip_prefix(quote)
+            .and_then(|v| v.strip_suffix(quote))
+        {
+            return inner;
+        }
+    }
+    value
+}
+
+/// Empty or a plain decimal number: text that carries no YAML syntax, so it
+/// is safe to paste where `${VAR}` stood.
+fn is_inert(value: &str) -> bool {
+    let unsigned = value.strip_prefix(['+', '-']).unwrap_or(value);
+    let (int, frac) = unsigned.split_once('.').unwrap_or((unsigned, "0"));
+    let digits = |s: &str| !s.is_empty() && s.bytes().all(|b| b.is_ascii_digit());
+    value.is_empty() || (digits(int) && digits(frac))
 }
 
 #[cfg(test)]
@@ -400,8 +554,108 @@ commit: { style: conventional, language: en, model: default }
     #[test]
     fn missing_env_var_expands_to_empty_not_error() {
         std::env::remove_var("AISH_UNSET_XYZ_1");
-        let out = super::expand_env("key: ${AISH_UNSET_XYZ_1}").unwrap();
-        assert_eq!(out, "key: ");
+        let cfg = Config::from_yaml(
+            "providers:\n  openai: { api_key: sk-x, base_url: \"http://h${AISH_UNSET_XYZ_1}/v1\" }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }",
+        )
+        .unwrap();
+        assert_eq!(
+            cfg.providers["openai"].base_url.as_deref(),
+            Some("http://h/v1")
+        );
+    }
+
+    #[test]
+    fn unterminated_env_ref_is_a_parse_error() {
+        let err = Config::from_yaml("providers:\n  openai:\n    api_key: ${OOPS\n").unwrap_err();
+        assert!(
+            matches!(err, ConfigError::Parse(ref m) if m.contains("unterminated")),
+            "{err:?}"
+        );
+    }
+
+    /// Whoever sets one interpolated variable (an API key, say) must not get
+    /// to rewrite the rest of the config: the value stays one literal string
+    /// in the scalar that named it, whatever YAML syntax it contains.
+    #[test]
+    #[serial(aish_env_inject)]
+    fn interpolated_value_cannot_inject_yaml() {
+        const VAR: &str = "AISH_TEST_INJECT_KEY";
+        let yaml = "providers:\n  openai: { api_key: ${AISH_TEST_INJECT_KEY} }\nmodels:\n  default: { provider: openai, model: gpt-5-mini }\ncommit: { style: conventional, language: en, model: default }\n";
+        for value in [
+            r#"k, base_url: "http://evil.example/v1" }  #"#,
+            "k }\n  evil: { api_key: x, base_url: http://evil.example/v1 }\n#",
+            "k\nmodels: {}",
+            "k # not a comment",
+            "12345",
+        ] {
+            std::env::set_var(VAR, value);
+            let cfg = Config::from_yaml(yaml);
+            std::env::remove_var(VAR);
+            let cfg = cfg.unwrap_or_else(|e| panic!("{value:?}: {e:?}"));
+            assert_eq!(cfg.providers.len(), 1, "{value:?}");
+            let openai = &cfg.providers["openai"];
+            assert_eq!(openai.api_key.as_deref(), Some(value), "{value:?}");
+            assert_eq!(openai.base_url, None, "{value:?}");
+            assert_eq!(cfg.models["default"].model, "gpt-5-mini", "{value:?}");
+        }
+    }
+
+    /// Values read the way a plain YAML scalar read them before: trimmed and
+    /// unquoted, and numbers still work in numeric fields — while errors
+    /// name the `${VAR}` the user wrote and keep their location.
+    #[test]
+    #[serial(aish_env_inject)]
+    fn env_values_keep_their_old_reading() {
+        let yaml = "providers:\n  openai: { api_key: ${AISH_TEST_VAL_KEY} }\nmodels:\n  default: { provider: openai, model: m }\ncommit: { style: conventional, language: en, model: default }\npricing:\n  m: { input_per_mtok: ${AISH_TEST_VAL_PRICE}, output_per_mtok: 1 }\n";
+        std::env::set_var("AISH_TEST_VAL_KEY", "\"sk-abc\"\r\n");
+        std::env::set_var("AISH_TEST_VAL_PRICE", "3.5");
+        let ok = Config::from_yaml(yaml);
+        std::env::set_var("AISH_TEST_VAL_PRICE", "cheap");
+        let bad = Config::from_yaml(yaml);
+        std::env::remove_var("AISH_TEST_VAL_KEY");
+        std::env::remove_var("AISH_TEST_VAL_PRICE");
+
+        let ok = ok.unwrap();
+        assert_eq!(ok.providers["openai"].api_key.as_deref(), Some("sk-abc"));
+        assert_eq!(ok.pricing["m"].input_per_mtok, 3.5);
+        let err = bad.unwrap_err().to_string();
+        assert!(err.contains("${AISH_TEST_VAL_PRICE}"), "{err}");
+        assert!(err.contains("line 7"), "{err}");
+    }
+
+    #[test]
+    fn only_empty_values_and_plain_numbers_are_pasted_as_text() {
+        for inert in ["", "0", "12345", "-1", "+2.50"] {
+            assert!(is_inert(inert), "{inert:?}");
+        }
+        for text in ["1e3", "1.", ".5", "0x1f", "1,2", "1 }", "true", "~", "sk-1"] {
+            assert!(!is_inert(text), "{text:?}");
+        }
+        assert_eq!(scalar_text("  'sk'  "), "sk");
+        assert_eq!(scalar_text("\"sk\"\n"), "sk");
+        assert_eq!(scalar_text("\"sk'"), "\"sk'");
+    }
+
+    /// Placeholders must survive text around them, digits right after them,
+    /// several references per scalar, quoting, keys, and an input that
+    /// already contains the default placeholder prefix.
+    #[test]
+    #[serial(aish_env_inject)]
+    fn env_refs_expand_in_place_everywhere() {
+        std::env::set_var("AISH_TEST_REF_A", "alpha");
+        std::env::set_var("AISH_TEST_REF_B", "beta");
+        let yaml = "providers:\n  ${AISH_TEST_REF_A}: { api_key: '${AISH_TEST_REF_A}${AISH_TEST_REF_B}', base_url: \"https://h/${AISH_TEST_REF_B}123/aishenv000000\" }\nmodels:\n  default: { provider: alpha, model: m-${AISH_TEST_REF_A} }\ncommit: { style: conventional, language: en, model: default }\n";
+        let cfg = Config::from_yaml(yaml);
+        std::env::remove_var("AISH_TEST_REF_A");
+        std::env::remove_var("AISH_TEST_REF_B");
+        let cfg = cfg.unwrap();
+        let p = &cfg.providers["alpha"];
+        assert_eq!(p.api_key.as_deref(), Some("alphabeta"));
+        assert_eq!(
+            p.base_url.as_deref(),
+            Some("https://h/beta123/aishenv000000")
+        );
+        assert_eq!(cfg.models["default"].model, "m-alpha");
     }
 
     #[test]
