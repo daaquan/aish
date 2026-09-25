@@ -192,7 +192,10 @@ The data dir must be inside your home directory for `--purge`: it refuses a
 data dir whose path contains `..` or that, with symlinks resolved, is not
 strictly inside your home directory. The whole uninstall is then aborted and
 nothing is removed, not even the binary. Run plain `aish uninstall` and delete
-that dir yourself.
+that dir yourself. A data dir that is itself a symlink, like
+`~/.aish -> ~/dotfiles/aish`, is purged along with the dir it points to.
+Symlinks inside the data dir, like the per-file ones `stow --no-folding`
+makes, are removed but not followed: delete what they point to yourself.
 
 Binaries installed via `cargo install` are detected and left alone — use
 `cargo install --git https://github.com/daaquan/aish` / `cargo uninstall aish`

@@ -23,15 +23,20 @@ pub fn run(purge: bool, yes: bool, json: bool) -> Result<()> {
         ));
     }
 
-    let data = data_dir(&home);
+    // Normalized: with a trailing `/` or `/.`, as tab completion writes a
+    // link to a dir, a path to a symlink makes even lstat and remove_dir_all
+    // follow it, which would empty the tree it points to, then fail on it.
+    let data: std::path::PathBuf = data_dir(&home).components().collect();
     // Validate BEFORE deleting anything, so a bad $AISH_HOME aborts the
     // whole uninstall instead of leaving a half-removed install behind.
+    let mut link_target = None;
     if purge {
         validate_purge_path(&data, &home).map_err(|e| anyhow!(e))?;
-        validate_resolved_purge_path(&data, &home)?;
+        link_target = validate_resolved_purge_path(&data, &home)?;
     }
 
-    if !yes && !confirm(&exe, purge.then_some(data.as_path()))? {
+    let purged = purge.then_some((data.as_path(), link_target.as_deref()));
+    if !yes && !confirm(&exe, purged)? {
         if json {
             emit_json(&serde_json::json!({
                 "removed_binary": serde_json::Value::Null,
@@ -53,8 +58,14 @@ pub fn run(purge: bool, yes: bool, json: bool) -> Result<()> {
 
     let mut removed_data = false;
     if purge && data.exists() {
+        // On a symlink this only unlinks it, so the tree it points to goes
+        // next. The link first, as it may sit inside that tree.
         std::fs::remove_dir_all(&data)
             .with_context(|| format!("removing data dir {}", data.display()))?;
+        if let Some(target) = &link_target {
+            std::fs::remove_dir_all(target)
+                .with_context(|| format!("removing data dir {}", target.display()))?;
+        }
         removed_data = true;
     }
 
@@ -67,6 +78,9 @@ pub fn run(purge: bool, yes: bool, json: bool) -> Result<()> {
         println!("removed {}", exe.display());
         if removed_data {
             println!("removed {}", data.display());
+            if let Some(target) = &link_target {
+                println!("removed {}", target.display());
+            }
         } else if data.exists() {
             println!(
                 "kept data dir {} ({}) — remove it with `rm -r` or rerun with --purge",
@@ -84,13 +98,16 @@ pub fn run(purge: bool, yes: bool, json: bool) -> Result<()> {
 /// `/etc/aish`. `home` is resolved too, as it may itself sit behind a symlink
 /// (`/var -> /private/var` on macOS). A missing dir has nothing to delete.
 ///
-/// Both ends of a symlinked `dir` must be in home. `remove_dir_all` unlinks a
-/// symlink instead of following it, so the entry it removes is `dir`'s name
-/// in its resolved parent; and a target outside home would be left in place
-/// while the purge reported it deleted.
-fn validate_resolved_purge_path(dir: &std::path::Path, home: &std::path::Path) -> Result<()> {
+/// Both ends of a symlinked `dir` must be in home, as the purge deletes both.
+/// `remove_dir_all` unlinks a symlink instead of following it, so the entry
+/// it removes is `dir`'s name in its resolved parent, and the tree the link
+/// points to has to be removed on its own: that tree is returned.
+fn validate_resolved_purge_path(
+    dir: &std::path::Path,
+    home: &std::path::Path,
+) -> Result<Option<std::path::PathBuf>> {
     if !dir.exists() {
-        return Ok(());
+        return Ok(None);
     }
     let real_home = home
         .canonicalize()
@@ -110,16 +127,34 @@ fn validate_resolved_purge_path(dir: &std::path::Path, home: &std::path::Path) -
         .with_context(|| format!("resolving data dir {}", dir.display()))?;
     validate_purge_path(&real, &real_home)
         .map_err(|e| anyhow!("{} resolves to {}: {e}", dir.display(), real.display()))?;
-    Ok(())
+    // remove_dir_all fails on anything else, and only once the binary is gone.
+    if !real.is_dir() {
+        return Err(anyhow!(
+            "refusing to purge '{}': not a directory",
+            dir.display()
+        ));
+    }
+    // `dir` has no trailing `/` (see run), or this would follow the link.
+    let is_link = dir
+        .symlink_metadata()
+        .with_context(|| format!("reading data dir {}", dir.display()))?
+        .file_type()
+        .is_symlink();
+    Ok(is_link.then_some(real))
 }
 
 /// Default-no prompt showing exactly what will be removed. EOF (piped
-/// stdin) counts as "no" so scripts can't uninstall by accident.
-fn confirm(exe: &std::path::Path, purge_dir: Option<&std::path::Path>) -> Result<bool> {
+/// stdin) counts as "no" so scripts can't uninstall by accident. `purge` is
+/// the data dir and, when that is a symlink, the tree it points to.
+fn confirm(
+    exe: &std::path::Path,
+    purge: Option<(&std::path::Path, Option<&std::path::Path>)>,
+) -> Result<bool> {
     println!("This will remove: {}", exe.display());
-    if let Some(dir) = purge_dir {
+    if let Some((dir, target)) = purge {
+        let target = target.map_or(String::new(), |t| format!(" -> {}", t.display()));
         println!(
-            "          and purge: {} ({})",
+            "          and purge: {}{target} ({})",
             dir.display(),
             human_size(dir_size(dir))
         );

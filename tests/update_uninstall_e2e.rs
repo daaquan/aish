@@ -540,6 +540,115 @@ fn uninstall_purge_follows_a_symlink_that_stays_in_home() {
     assert!(!data.exists(), "data dir should be purged");
 }
 
+/// Purge a stow-style `<home>/.aish -> dotfiles/aish`, the default data dir
+/// or, given `aish_home`, `$AISH_HOME=<home>/<aish_home>`: the prompt must
+/// name the target, and the link and what it points to must go, alone.
+fn assert_purges_symlinked_data_dir(aish_home: Option<&str>) {
+    let home = tempdir().unwrap();
+    let dotfiles = home.path().join("dotfiles");
+    let target = dotfiles.join("aish");
+    std::fs::create_dir_all(target.join("cache")).unwrap();
+    std::fs::write(target.join("config.yaml"), "x: 1").unwrap();
+    std::fs::write(target.join("audit.log"), "{}").unwrap();
+    std::fs::write(dotfiles.join("bashrc"), "keep").unwrap();
+    let data = home.path().join(".aish");
+    std::os::unix::fs::symlink("dotfiles/aish", &data).unwrap();
+    let bin = copy_bin(home.path(), "bin");
+    let uninstall = |args: &[&str]| {
+        let mut cmd = Command::new(&bin);
+        cmd.env("HOME", home.path()).env_remove("CARGO_HOME");
+        match aish_home {
+            // `join` keeps a trailing `/` or `/.` as written.
+            Some(dir) => cmd.env("AISH_HOME", home.path().join(dir)),
+            None => cmd.env_remove("AISH_HOME"),
+        };
+        cmd.args(args).stdin(Stdio::null()).output().unwrap()
+    };
+
+    // stdin is null, so the prompt aborts after showing what it would purge.
+    let out = uninstall(&["uninstall", "--purge"]);
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    let shown = format!("-> {}", target.canonicalize().unwrap().display());
+    assert!(stdout.contains(&shown), "{aish_home:?}: prompt: {stdout}");
+    assert!(bin.exists(), "{aish_home:?}: the prompt should abort");
+
+    let out = uninstall(&["uninstall", "--yes", "--purge", "--json"]);
+
+    assert!(
+        out.status.success(),
+        "{aish_home:?}: stderr: {}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
+    assert_eq!(v["removed_data"], json!(true), "{aish_home:?}");
+    assert!(!bin.exists(), "{aish_home:?}");
+    let gone = |p: &Path| p.symlink_metadata().is_err();
+    assert!(gone(&data), "{aish_home:?}: the link should be gone");
+    assert!(gone(&target), "{aish_home:?}: its target should be purged");
+    assert!(dotfiles.join("bashrc").exists(), "only the data dir may go");
+}
+
+/// A data dir that is itself a link, as GNU stow makes them: `remove_dir_all`
+/// only unlinks it, so the purge has to remove what it points to as well.
+#[test]
+fn uninstall_purge_removes_what_a_symlinked_data_dir_points_to() {
+    assert_purges_symlinked_data_dir(None);
+}
+
+/// Tab completion ends a link to a dir with `/`. Spelled so, or with `/.`,
+/// the path makes the OS follow the link where the purge must remove it.
+#[test]
+fn uninstall_purge_removes_a_symlinked_data_dir_named_with_a_trailing_slash() {
+    assert_purges_symlinked_data_dir(Some(".aish/"));
+    assert_purges_symlinked_data_dir(Some(".aish/."));
+}
+
+/// `~/.aish` itself links out of home: its target must survive, the link too.
+#[test]
+fn uninstall_purge_refuses_a_symlinked_data_dir_pointing_out_of_home() {
+    let home = tempdir().unwrap();
+    let outside = tempdir().unwrap();
+    std::fs::write(outside.path().join("precious"), "data").unwrap();
+    let data = home.path().join(".aish");
+    std::os::unix::fs::symlink(outside.path(), &data).unwrap();
+    let bin = copy_bin(home.path(), "bin");
+
+    let out = run(&bin, home.path(), None, &["uninstall", "--yes", "--purge"]);
+
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("outside home directory"),
+        "stderr should say why: {stderr}"
+    );
+    assert!(bin.exists(), "nothing may be deleted when the guard fires");
+    assert!(data.symlink_metadata().is_ok(), "the link must survive");
+    assert!(outside.path().join("precious").exists());
+}
+
+/// A link to a file has no tree to purge; the uninstall must stop before the
+/// binary goes, not fail after it.
+#[test]
+fn uninstall_purge_refuses_a_data_dir_that_is_not_a_directory() {
+    let home = tempdir().unwrap();
+    std::fs::write(home.path().join("aish.yaml"), "x: 1").unwrap();
+    let data = home.path().join(".aish");
+    std::os::unix::fs::symlink("aish.yaml", &data).unwrap();
+    let bin = copy_bin(home.path(), "bin");
+
+    let out = run(&bin, home.path(), None, &["uninstall", "--yes", "--purge"]);
+
+    assert!(!out.status.success());
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("not a directory"),
+        "stderr should say why: {stderr}"
+    );
+    assert!(bin.exists(), "nothing may be deleted when the guard fires");
+    assert!(data.symlink_metadata().is_ok(), "the link must survive");
+    assert!(home.path().join("aish.yaml").exists());
+}
+
 #[test]
 fn uninstall_refuses_cargo_installed_binary() {
     let home = tempdir().unwrap();
