@@ -9,7 +9,7 @@ use crate::paths::data_dir;
 use crate::uninstall::{dir_size, human_size, validate_purge_path};
 use crate::update::cargo_install;
 use anyhow::{anyhow, Context, Result};
-use std::io::Write;
+use std::io::{ErrorKind, Write};
 
 pub fn run(purge: bool, yes: bool, json: bool) -> Result<()> {
     let exe = std::env::current_exe().context("resolving current executable")?;
@@ -41,6 +41,7 @@ pub fn run(purge: bool, yes: bool, json: bool) -> Result<()> {
             emit_json(&serde_json::json!({
                 "removed_binary": serde_json::Value::Null,
                 "removed_data": false,
+                "removed_data_target": serde_json::Value::Null,
                 "aborted": true,
             }));
         } else {
@@ -49,10 +50,12 @@ pub fn run(purge: bool, yes: bool, json: bool) -> Result<()> {
         return Ok(());
     }
 
+    // Not `exists()`, which follows a link: a dangling one is purged too.
+    let purging = || purge && data.symlink_metadata().is_ok();
     // The binary goes before the data dir, so a binary that stays, as it does
     // on Windows, leaves the install untouched instead of half-removed.
     std::fs::remove_file(&exe).map_err(|e| {
-        let unpurged = (purge && data.exists()).then(|| data_label(&data, link_target.as_deref()));
+        let unpurged = purging().then(|| data_label(&data, link_target.as_deref()));
         anyhow!(
             "cannot remove {}: {e}; {}",
             exe.display(),
@@ -61,7 +64,7 @@ pub fn run(purge: bool, yes: bool, json: bool) -> Result<()> {
     })?;
 
     let mut removed_data = false;
-    if purge && data.exists() {
+    if purging() {
         // On a symlink this only unlinks it, so the tree it points to goes
         // next. The link first, as it may sit inside that tree.
         std::fs::remove_dir_all(&data)
@@ -74,9 +77,12 @@ pub fn run(purge: bool, yes: bool, json: bool) -> Result<()> {
     }
 
     if json {
+        // The tree a symlinked data dir points to, which the purge removed too.
+        let target = link_target.filter(|_| removed_data);
         emit_json(&serde_json::json!({
             "removed_binary": exe.display().to_string(),
             "removed_data": removed_data,
+            "removed_data_target": target.map(|t| t.display().to_string()),
         }));
     } else {
         println!("removed {}", exe.display());
@@ -86,9 +92,20 @@ pub fn run(purge: bool, yes: bool, json: bool) -> Result<()> {
                 println!("removed {}", target.display());
             }
         } else if data.exists() {
+            // Only for the message, with the binary gone: a data dir that
+            // cannot be resolved is just named as it is.
+            let target = match resolve_data_dir(&data) {
+                Ok((real, true)) => real,
+                _ => None,
+            };
+            let what = if target.is_some() {
+                "both the link and its target"
+            } else {
+                "it"
+            };
             println!(
-                "kept data dir {} ({}) — remove it with `rm -r` or rerun with --purge",
-                data.display(),
+                "kept data dir {} ({}) — delete {what} by hand to remove config, cache and audit log",
+                data_label(&data, target.as_deref()),
                 human_size(dir_size(&data))
             );
         }
@@ -105,12 +122,14 @@ pub fn run(purge: bool, yes: bool, json: bool) -> Result<()> {
 /// Both ends of a symlinked `dir` must be in home, as the purge deletes both.
 /// `remove_dir_all` unlinks a symlink instead of following it, so the entry
 /// it removes is `dir`'s name in its resolved parent, and the tree the link
-/// points to has to be removed on its own: that tree is returned.
+/// points to has to be removed on its own: that tree is returned. A dangling
+/// link has none, and only its own end is checked.
 fn validate_resolved_purge_path(
     dir: &std::path::Path,
     home: &std::path::Path,
 ) -> Result<Option<std::path::PathBuf>> {
-    if !dir.exists() {
+    // Not `exists()`, which follows a link: a dangling one is still there.
+    if dir.symlink_metadata().is_err() {
         return Ok(None);
     }
     let real_home = home
@@ -126,25 +145,45 @@ fn validate_resolved_purge_path(
         .join(name);
     validate_purge_path(&entry, &real_home)
         .map_err(|e| anyhow!("{} is at {}: {e}", dir.display(), entry.display()))?;
-    let real = dir
-        .canonicalize()
-        .with_context(|| format!("resolving data dir {}", dir.display()))?;
-    validate_purge_path(&real, &real_home)
-        .map_err(|e| anyhow!("{} resolves to {}: {e}", dir.display(), real.display()))?;
-    // remove_dir_all fails on anything else, and only once the binary is gone.
-    if !real.is_dir() {
-        return Err(anyhow!(
-            "refusing to purge '{}': not a directory",
+    // Resolved even when it is no link, as `entry` is only a name: Windows
+    // drops trailing dots and spaces from one, so `~\...` passes as a subdir
+    // of home, yet opens home itself.
+    let (real, is_link) = resolve_data_dir(dir).map_err(|e| {
+        anyhow!(
+            "refusing to purge '{}': cannot resolve it: {e}",
             dir.display()
-        ));
+        )
+    })?;
+    // A dangling link points to nothing, so only the link itself goes.
+    if let Some(real) = &real {
+        validate_purge_path(real, &real_home)
+            .map_err(|e| anyhow!("{} resolves to {}: {e}", dir.display(), real.display()))?;
+        // remove_dir_all fails on anything else, and only once the binary is gone.
+        if !real.is_dir() {
+            return Err(anyhow!(
+                "refusing to purge '{}': not a directory",
+                dir.display()
+            ));
+        }
     }
+    Ok(real.filter(|_| is_link))
+}
+
+/// Where the OS really opens the data dir `dir`, with every symlink resolved,
+/// and whether `dir` is itself a symlink: deleting it, with `remove_dir_all`
+/// as with `rm -r`, then only unlinks it and keeps the tree it points to.
+/// `None` for a dangling link, which points to nothing: to a missing path, or
+/// to one under a regular file.
+fn resolve_data_dir(dir: &std::path::Path) -> std::io::Result<(Option<std::path::PathBuf>, bool)> {
     // `dir` has no trailing `/` (see run), or this would follow the link.
-    let is_link = dir
-        .symlink_metadata()
-        .with_context(|| format!("reading data dir {}", dir.display()))?
-        .file_type()
-        .is_symlink();
-    Ok(is_link.then_some(real))
+    let is_link = dir.symlink_metadata()?.file_type().is_symlink();
+    match dir.canonicalize() {
+        Ok(real) => Ok((Some(real), is_link)),
+        Err(e) if is_link && matches!(e.kind(), ErrorKind::NotFound | ErrorKind::NotADirectory) => {
+            Ok((None, true))
+        }
+        Err(e) => Err(e),
+    }
 }
 
 /// Default-no prompt showing exactly what will be removed. EOF (piped
@@ -224,6 +263,25 @@ mod tests {
             hint.ends_with(r"after aish exits, and C:\Users\u\.aish too, which was not purged"),
             "{hint}"
         );
+    }
+
+    /// Windows drops trailing dots and spaces from a name, so each of these
+    /// opens home itself. As written, it is a subdir of home that is no link:
+    /// only resolving it shows where it is.
+    #[cfg(windows)]
+    #[test]
+    fn resolved_purge_path_refuses_names_windows_opens_as_home() {
+        let home = tempfile::tempdir().unwrap();
+        let home = home.path();
+        for name in ["...", ". ", ".. "] {
+            let dir = home.join(name);
+            assert!(validate_purge_path(&dir, home).is_ok(), "{name:?}");
+            let err = validate_resolved_purge_path(&dir, home).unwrap_err();
+            assert!(
+                err.to_string().contains("not a dedicated data dir"),
+                "{name:?}: {err}"
+            );
+        }
     }
 
     #[test]
