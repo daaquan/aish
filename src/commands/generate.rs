@@ -19,10 +19,10 @@ pub(crate) struct Generated {
 
 /// Run `messages` through the cache and the resolved provider.
 ///
-/// An identical request (same provider, endpoint, proxy settings, model, and
-/// messages) is served from the cache without a model call unless `no_cache`
-/// is set. In non-JSON mode a cache hit prints a note so the user knows no
-/// request was made.
+/// An identical request (same provider, endpoint, proxy settings, API key,
+/// model, and messages) is served from the cache without a model call unless
+/// `no_cache` is set. In non-JSON mode a cache hit prints a note so the user
+/// knows no request was made.
 pub(crate) async fn generate(
     resolved: &Resolved<'_>,
     messages: Vec<Message>,
@@ -91,34 +91,40 @@ fn mock_reply() -> Option<String> {
 }
 
 /// Cache key for a request: the provider name, model and messages, plus where
-/// the reply comes from, so that one invocation's environment (`$AISH_CONFIG`,
-/// a `${VAR}` in the config, a proxy variable, the mock hook) cannot plant an
-/// entry that later invocations trust.
+/// the reply comes from and the API key it is asked with, so that one
+/// invocation's environment (`$AISH_CONFIG`, a `${VAR}` in the config, a proxy
+/// variable, the mock hook) cannot plant an entry that later invocations
+/// trust.
 ///
 /// A real reply comes from the provider's `base_url` (empty for the adapter's
 /// default), which its name alone does not pin down, through the proxy
-/// settings in `proxy` ([`proxy_env`]). How host names resolve is not covered:
-/// where the host a plain-http request connects to, the `base_url`'s or, when
-/// a proxy applies, the proxy's, is looked up in DNS, resolver variables such
-/// as glibc's `HOSTALIASES` can still send one invocation's request elsewhere,
+/// settings in `proxy` ([`proxy_env`]), and can depend on the provider's
+/// `api_key`, which goes in as a hash ([`crate::cache::credential`]): a
+/// gateway that routes by key answers each key differently. Nothing else in
+/// the provider's config reaches the request, and aish fixes its other
+/// headers and parameters. How host names resolve is not covered: where the
+/// host a plain-http request connects to, the `base_url`'s or, when a proxy
+/// applies, the proxy's, is looked up in DNS, resolver variables such as
+/// glibc's `HOSTALIASES` can still send one invocation's request elsewhere,
 /// even for a `base_url` of `localhost`. A mock reply comes from
-/// `$AISH_MOCK_REPLY`, which takes the endpoint's place, and no proxy is
-/// involved; mock keys are also prefixed, and real keys are bare hex, so no
-/// mock entry can name a real one.
+/// `$AISH_MOCK_REPLY`, which takes the endpoint's place, and no proxy or API
+/// key is involved; mock keys are also prefixed, and real keys are bare hex,
+/// so no mock entry can name a real one.
 fn cache_key(
     resolved: &Resolved<'_>,
     messages: &[Message],
     mock: Option<&str>,
     proxy: &str,
 ) -> String {
-    let key = |endpoint, proxy| {
+    let key = |endpoint, proxy, credential| {
         let (provider, model) = (&resolved.provider_name, &resolved.model);
-        crate::cache::request_key(provider, endpoint, proxy, model, messages)
+        crate::cache::request_key(provider, endpoint, proxy, credential, model, messages)
     };
     let base_url = resolved.provider.base_url.as_deref().unwrap_or_default();
+    let credential = crate::cache::credential(resolved.provider.api_key.as_deref());
     match mock {
-        Some(reply) => format!("mock-{}", key(reply, "")),
-        None => key(base_url, proxy),
+        Some(reply) => format!("mock-{}", key(reply, "", "")),
+        None => key(base_url, proxy, &credential),
     }
 }
 
@@ -211,6 +217,36 @@ mod tests {
         let default = provider(None);
         assert_eq!(key(&default), key(&provider(None)));
         assert_ne!(key(&default), key(&provider(Some(ELSEWHERE))));
+    }
+
+    #[test]
+    fn real_keys_follow_the_api_key() {
+        // A gateway that routes by key answers each one differently, and
+        // `$AISH_CONFIG`, or a `${VAR}` in `api_key`, can pick the key for
+        // one invocation.
+        let key = |api_key: Option<&str>| {
+            let p = ProviderConfig {
+                api_key: api_key.map(Into::into),
+                base_url: Some(ELSEWHERE.into()),
+            };
+            cache_key(&resolved("openai", &p), &msgs(), None, "")
+        };
+        assert_eq!(key(Some("sk-x")), key(Some("sk-x")));
+        assert_ne!(key(Some("sk-x")), key(Some("sk-attacker")));
+        assert_ne!(key(Some("sk-x")), key(None));
+    }
+
+    #[test]
+    fn real_keys_take_the_api_key_as_its_hash() {
+        // The raw key must never reach the key buffer, and a test of
+        // `cache::credential` alone would not catch a caller that skips it.
+        let p = provider(Some(ELSEWHERE));
+        let key = |credential: &str| {
+            crate::cache::request_key("openai", ELSEWHERE, "", credential, "gpt-5-mini", &msgs())
+        };
+        let got = cache_key(&resolved("openai", &p), &msgs(), None, "");
+        assert_eq!(got, key(&crate::cache::credential(Some("sk-x"))));
+        assert_ne!(got, key("sk-x"));
     }
 
     #[test]

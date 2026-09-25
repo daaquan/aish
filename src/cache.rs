@@ -2,9 +2,9 @@
 //! Deterministic on-disk cache for AI chat responses.
 //!
 //! The cache key is a stable hash of the exact request (provider, endpoint,
-//! proxy settings, model, and every message). Identical requests — e.g.
-//! regenerating a commit message for the same staged diff — reuse the stored
-//! response and skip the network call.
+//! proxy settings, a hash of the API key, model, and every message).
+//! Identical requests — e.g. regenerating a commit message for the same
+//! staged diff — reuse the stored response and skip the network call.
 //!
 //! The hash is SHA-256. Unlike [`std::hash`]'s `DefaultHasher` its result
 //! stays the same across Rust versions and platforms, and unlike a fast hash
@@ -33,7 +33,10 @@ fn role_tag(role: Role) -> &'static str {
 /// key that can point anywhere, so without it a reply fetched from one server
 /// would be served to requests meant for another. `proxy` is the proxy
 /// configuration the request is sent through: a proxy in front of a
-/// plain-http endpoint answers the request itself.
+/// plain-http endpoint answers the request itself. `credential` is the hash
+/// of the API key the request is sent with ([`credential`]): a gateway that
+/// routes by key, such as LiteLLM's or Portkey's virtual keys, answers the
+/// same request differently for each key.
 ///
 /// Fields are length-prefixed so no message content can be crafted to collide
 /// with a different field layout.
@@ -41,12 +44,13 @@ pub fn request_key(
     provider: &str,
     endpoint: &str,
     proxy: &str,
+    credential: &str,
     model: &str,
     messages: &[Message],
 ) -> String {
     let mut buf = String::new();
-    buf.push_str("aish-cache-v4\n");
-    for field in [provider, endpoint, proxy, model] {
+    buf.push_str("aish-cache-v5\n");
+    for field in [provider, endpoint, proxy, credential, model] {
         buf.push_str(&field.len().to_string());
         buf.push('\n');
         buf.push_str(field);
@@ -60,7 +64,21 @@ pub fn request_key(
         buf.push_str(&m.content);
         buf.push('\n');
     }
-    let hash = digest(&SHA256, buf.as_bytes());
+    sha256_hex(buf.as_bytes())
+}
+
+/// The `credential` field of [`request_key`] for a request sent with
+/// `api_key`: the key's SHA-256 in hex, or "" when there is none.
+///
+/// A hash rather than the key itself keeps the secret out of the key buffer,
+/// and so out of anything built from it, such as the entry names anyone who
+/// can list the cache dir sees.
+pub fn credential(api_key: Option<&str>) -> String {
+    api_key.map_or_else(String::new, |k| sha256_hex(k.as_bytes()))
+}
+
+fn sha256_hex(data: &[u8]) -> String {
+    let hash = digest(&SHA256, data);
     hash.as_ref().iter().map(|b| format!("{b:02x}")).collect()
 }
 
@@ -138,7 +156,7 @@ mod tests {
     const OTHER: &str = "http://127.0.0.1:9/v1";
 
     fn key(provider: &str, endpoint: &str, model: &str, diff: &str) -> String {
-        request_key(provider, endpoint, "", model, &msgs(diff))
+        request_key(provider, endpoint, "", "", model, &msgs(diff))
     }
 
     #[test]
@@ -154,30 +172,46 @@ mod tests {
     fn key_is_the_sha256_of_the_length_prefixed_request() {
         // Pinned, since a key must not change across aish or Rust versions
         // unless the layout tag does. Computed outside aish with
-        // printf 'aish-cache-v4\n1\np\n1\ne\n0\n\n1\nm\nuser\n2\nhi\n' | sha256sum
-        let key = request_key("p", "e", "", "m", &[Message::user("hi")]);
+        // printf 'aish-cache-v5\n1\np\n1\ne\n0\n\n1\nc\n1\nm\nuser\n2\nhi\n' | sha256sum
+        let key = request_key("p", "e", "", "c", "m", &[Message::user("hi")]);
         assert_eq!(
             key,
-            "c1ebc7769efbf6d90f2df4f81b50e822833985a28d6cbf536fca68e043bf35d2"
+            "20857f87b533993efdda5ee517d3aa865ecad5c2b6bcc90d5c57fb681f08422f"
         );
     }
 
     #[test]
-    fn key_changes_with_diff_model_endpoint_proxy_or_provider() {
+    fn key_changes_with_diff_model_endpoint_proxy_credential_or_provider() {
         let base = key("openai", OPENAI, "gpt-5-mini", "diff A");
         assert_ne!(base, key("openai", OPENAI, "gpt-5-mini", "diff B"));
         assert_ne!(base, key("openai", OPENAI, "gpt-5-nano", "diff A"));
         assert_ne!(base, key("openai", OTHER, "gpt-5-mini", "diff A"));
         assert_ne!(base, key("anthropic", OPENAI, "gpt-5-mini", "diff A"));
-        let proxied = request_key("openai", OPENAI, "proxy", "gpt-5-mini", &msgs("diff A"));
-        assert_ne!(base, proxied);
+        let with = |proxy: &str, api_key: Option<&str>| {
+            let (cred, msgs) = (credential(api_key), msgs("diff A"));
+            request_key("openai", OPENAI, proxy, &cred, "gpt-5-mini", &msgs)
+        };
+        assert_eq!(base, with("", None));
+        assert_ne!(base, with("proxy", None));
+        assert_ne!(base, with("", Some("sk-x")));
+        assert_ne!(with("", Some("sk-x")), with("", Some("sk-y")));
+    }
+
+    #[test]
+    fn credential_is_the_sha256_of_the_api_key() {
+        // Computed outside aish with printf 'sk-victim' | sha256sum
+        assert_eq!(
+            credential(Some("sk-victim")),
+            "df1b43c5fd0f5c8844ff17fc8caa5217f2c09f4d96fc7efc8c00cb34716f785d"
+        );
+        assert_eq!(credential(None), "");
     }
 
     #[test]
     fn length_prefix_prevents_field_boundary_collisions() {
         // Without length prefixing, "ab" + "c" could collide with "a" + "bc".
-        let one = request_key("ab", "c", "", "d", &[]);
-        let two = request_key("a", "bc", "", "d", &[]);
+        let one = request_key("ab", "c", "", "", "d", &[]);
+        let two = request_key("a", "bc", "", "", "d", &[]);
         assert_ne!(one, two);
     }
 
@@ -230,7 +264,7 @@ mod tests {
     #[test]
     fn put_then_get_roundtrips() {
         let dir = tempdir().unwrap();
-        let key = request_key("openai", OPENAI, "", "gpt-5-mini", &msgs("diff"));
+        let key = request_key("openai", OPENAI, "", "", "gpt-5-mini", &msgs("diff"));
         assert!(get(dir.path(), &key).is_none());
         put(dir.path(), &key, "feat: cached message").unwrap();
         assert_eq!(

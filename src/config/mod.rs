@@ -15,6 +15,10 @@ pub enum ConfigError {
     Io(PathBuf, String),
 }
 
+/// One provider's connection settings. Each field can change who answers a
+/// request or what they answer, so the reply cache keys on each (`cache_key`
+/// in `commands/generate.rs`); a new field that reaches the request belongs
+/// in the key too.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProviderConfig {
     #[serde(default)]
