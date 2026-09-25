@@ -128,6 +128,17 @@ model provider you configure. Treat that as disclosure to a third party.
   cached mock reply is only served to a later run with the same
   `$AISH_MOCK_REPLY`, and mock replies never share cache entries with real
   providers.
+- **`aish update`** downloads your platform's asset from this repository's
+  GitHub releases over HTTPS and installs it once it starts with ELF or
+  Mach-O magic bytes. That check only rejects error pages; there is no
+  separate checksum or signature, so you are trusting GitHub's TLS and
+  whoever can publish releases to `daaquan/aish` — which includes the
+  third-party GitHub Actions the release workflow runs, since release assets
+  are uploaded with `--clobber` and can be replaced in place. A checksum made
+  by the same workflow would add no second trust root, so none is published.
+  To build exactly the code you reviewed instead, pin the commit (tags can be
+  moved) and its lockfile:
+  `cargo install --locked --git https://github.com/daaquan/aish --rev <commit>`.
 
 ## Disclosure
 
