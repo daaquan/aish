@@ -144,10 +144,17 @@ async fn update_check_reports_without_downloading() {
         &["update", "--check", "--json"],
     );
 
-    // Outdated → nonzero exit (CI gate), but the binary stays untouched.
-    assert!(!out.status.success());
+    // Outdated → exit 1 (CI gate), not reported as an error, and the binary
+    // stays untouched.
+    assert_eq!(out.status.code(), Some(1));
+    assert!(
+        out.stderr.is_empty(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
     let v: serde_json::Value = serde_json::from_slice(&out.stdout).unwrap();
     assert_eq!(v["latest"], json!("99.0.0"));
+    assert_eq!(v["available"], json!(true));
     assert_eq!(v["updated"], json!(false));
     assert_eq!(std::fs::read(&bin).unwrap(), before);
 
@@ -161,6 +168,55 @@ async fn update_check_reports_without_downloading() {
         &["update", "--check"],
     );
     assert!(out2.status.success());
+}
+
+/// A check that could not be answered must not exit 1, which `--check`
+/// reserves for "update available".
+#[cfg_attr(not(debug_assertions), ignore = "AISH_UPDATE_* hooks are debug-only")]
+#[tokio::test(flavor = "multi_thread")]
+async fn update_check_exits_3_when_the_check_fails() {
+    let home = tempdir().unwrap();
+    let bin = copy_bin(home.path(), "bin");
+    let server = MockServer::start().await;
+    Mock::given(method("GET"))
+        .and(path("/repos/daaquan/aish/releases/latest"))
+        .respond_with(ResponseTemplate::new(503))
+        .mount(&server)
+        .await;
+
+    let out = run(
+        &bin,
+        home.path(),
+        Some(&server.uri()),
+        &["update", "--check"],
+    );
+    assert_eq!(out.status.code(), Some(3));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("release check failed"), "{stderr}");
+
+    // An unusable pinned version cannot be answered either.
+    let out = run(
+        &bin,
+        home.path(),
+        Some(&server.uri()),
+        &["update", "--check", "--version", "latest"],
+    );
+    assert_eq!(out.status.code(), Some(3));
+
+    // Nor can a latest release whose tag is no version: not "up to date".
+    let odd = MockServer::start().await;
+    mock_release(&odd, "nightly", b"unused").await;
+    let out = run(&bin, home.path(), Some(&odd.uri()), &["update", "--check"]);
+    assert_eq!(out.status.code(), Some(3));
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(
+        stderr.contains("'nightly' is not an X.Y.Z version"),
+        "{stderr}"
+    );
+
+    // Without --check, failures keep the usual exit status 1.
+    let out = run(&bin, home.path(), Some(&server.uri()), &["update"]);
+    assert_eq!(out.status.code(), Some(1));
 }
 
 #[cfg_attr(not(debug_assertions), ignore = "AISH_UPDATE_* hooks are debug-only")]

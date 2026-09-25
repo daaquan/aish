@@ -12,6 +12,6 @@ async fn main() {
         } else {
             eprintln!("error: {e}");
         }
-        std::process::exit(1);
+        std::process::exit(aish::commands::exit_code(&e));
     }
 }

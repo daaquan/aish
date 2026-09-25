@@ -182,7 +182,7 @@ Also supports `elvish` and `powershell`.
 
 ```bash
 aish update              # self-update to the latest GitHub release
-aish update --check      # report only; nonzero exit when outdated (CI gate)
+aish update --check      # report only; exit 1 when outdated, 3 if the check fails (CI gate)
 aish update --version 0.5.0   # pin a specific release tag
 
 aish uninstall           # remove the binary (asks first; keeps the data dir)

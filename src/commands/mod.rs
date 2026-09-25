@@ -144,6 +144,39 @@ pub async fn run(cli: Cli) -> Result<()> {
     }
 }
 
+/// An error that should end the process with `code` instead of the default
+/// exit status 1, for commands where 1 already means something else (e.g.
+/// `update --check`, where it means "update available"). Displays as the
+/// wrapped error, so `main` reports it like any other.
+#[derive(Debug)]
+pub struct Exit {
+    pub code: i32,
+    error: anyhow::Error,
+}
+
+impl Exit {
+    pub fn new(code: i32, error: anyhow::Error) -> Self {
+        Self { code, error }
+    }
+}
+
+impl std::fmt::Display for Exit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        std::fmt::Display::fmt(&self.error, f)
+    }
+}
+
+impl std::error::Error for Exit {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        self.error.source()
+    }
+}
+
+/// Exit status for an error: the one an [`Exit`] carries, else 1.
+pub fn exit_code(error: &anyhow::Error) -> i32 {
+    error.downcast_ref::<Exit>().map_or(1, |e| e.code)
+}
+
 /// Print a JSON value to stdout (pretty-printed), the single sink for `--json` output.
 pub(crate) fn emit_json(value: &serde_json::Value) {
     println!("{}", serde_json::to_string_pretty(value).unwrap());
@@ -212,4 +245,18 @@ fn usage(json: bool) -> Result<()> {
         print!("{}", crate::usage::render(&summary));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn exit_code_is_1_unless_the_error_carries_one() {
+        assert_eq!(exit_code(&anyhow::anyhow!("boom")), 1);
+        let e: anyhow::Error = Exit::new(3, anyhow::anyhow!("release check failed")).into();
+        assert_eq!(exit_code(&e), 3);
+        // Reported like the wrapped error, not as a wrapper.
+        assert_eq!(e.to_string(), "release check failed");
+    }
 }

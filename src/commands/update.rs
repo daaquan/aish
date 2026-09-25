@@ -6,7 +6,7 @@
 //! the GitHub endpoints to a local mock server. Debug builds only — see
 //! [`crate::update::endpoint_base`].
 
-use crate::commands::emit_json;
+use crate::commands::{emit_json, Exit};
 use crate::update::{
     asset_name, cargo_install, download_url, endpoint_base, is_newer, looks_like_binary,
     normalize_tag, parse_version, replace_binary,
@@ -16,16 +16,22 @@ use anyhow::{anyhow, Context, Result};
 const DEFAULT_API_BASE: &str = "https://api.github.com";
 const DEFAULT_DOWNLOAD_BASE: &str = "https://github.com";
 
+/// `update --check` exit status when an update is available.
+const CHECK_OUTDATED: i32 = 1;
+/// `update --check` exit status when the check itself could not be answered:
+/// not 1, which means "outdated" there, nor 2, clap's usage error.
+const CHECK_FAILED: i32 = 3;
+
 pub async fn run(check: bool, version: Option<String>, json: bool) -> Result<()> {
     let current = env!("CARGO_PKG_VERSION");
     let api_base = endpoint_base("AISH_UPDATE_API_BASE", DEFAULT_API_BASE);
     let download_base = endpoint_base("AISH_UPDATE_DOWNLOAD_BASE", DEFAULT_DOWNLOAD_BASE);
 
     let client = reqwest::Client::new();
-    let tag = match &version {
-        Some(v) => normalize_tag(v)
-            .ok_or_else(|| anyhow!("invalid version '{v}': expected X.Y.Z, e.g. 0.5.0"))?,
-        None => fetch_latest_tag(&client, &api_base).await?,
+    let tag = match resolve_tag(&client, &api_base, version.as_deref()).await {
+        Ok(tag) => tag,
+        Err(e) if check => return Err(Exit::new(CHECK_FAILED, e).into()),
+        Err(e) => return Err(e),
     };
     let latest = tag.trim_start_matches('v').to_string();
 
@@ -41,6 +47,7 @@ pub async fn run(check: bool, version: Option<String>, json: bool) -> Result<()>
             emit_json(&serde_json::json!({
                 "current": current,
                 "latest": latest,
+                "available": available,
                 "updated": false,
             }));
         } else if available {
@@ -49,8 +56,9 @@ pub async fn run(check: bool, version: Option<String>, json: bool) -> Result<()>
             println!("aish v{current} is up to date");
         }
         if available {
-            // Nonzero exit so `aish update --check` works as a CI gate.
-            return Err(anyhow!("update available: v{latest}"));
+            // Nonzero so `aish update --check` works as a CI gate, but not
+            // an error: the check succeeded, so nothing goes to stderr.
+            std::process::exit(CHECK_OUTDATED);
         }
         return Ok(());
     }
@@ -118,6 +126,25 @@ pub async fn run(check: bool, version: Option<String>, json: bool) -> Result<()>
         println!("updated aish v{current} -> v{latest} ({})", exe.display());
     }
     Ok(())
+}
+
+/// The release tag to check or install: the pinned `version` or the latest
+/// release's, either way a plain `vX.Y.Z`. A latest tag that is no version
+/// cannot be compared, so it is an error rather than "up to date".
+async fn resolve_tag(
+    client: &reqwest::Client,
+    api_base: &str,
+    version: Option<&str>,
+) -> Result<String> {
+    match version {
+        Some(v) => normalize_tag(v)
+            .ok_or_else(|| anyhow!("invalid version '{v}': expected X.Y.Z, e.g. 0.5.0")),
+        None => {
+            let tag = fetch_latest_tag(client, api_base).await?;
+            normalize_tag(&tag)
+                .ok_or_else(|| anyhow!("latest release tag '{tag}' is not an X.Y.Z version"))
+        }
+    }
 }
 
 async fn fetch_latest_tag(client: &reqwest::Client, api_base: &str) -> Result<String> {

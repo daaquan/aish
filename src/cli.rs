@@ -172,7 +172,8 @@ pub enum Command {
     },
     /// Update aish to the latest GitHub release (or a pinned tag).
     Update {
-        /// Only report whether a newer release exists; nonzero exit if outdated.
+        /// Only report whether a newer release exists: exit 0 if up to date,
+        /// 1 if outdated, 3 if the check itself fails.
         #[arg(long)]
         check: bool,
         /// Install a specific release tag instead of the latest (e.g. 0.5.0).
