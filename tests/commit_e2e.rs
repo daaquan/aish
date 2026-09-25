@@ -139,6 +139,8 @@ commit: { style: conventional, language: en, model: default }
         .env("AISH_MOCK_REPLY", "feat: ai suggestion")
         .env("HOME", cfg.path())
         .env("AISH_HOME", cfg.path().join("aish-home"))
+        // aish prefers $VISUAL, so the caller's must not shadow this one.
+        .env_remove("VISUAL")
         .env("EDITOR", "printf 'fix: hand-edited subject' >")
         .args(["commit"])
         // The confirm loop re-prompts after an edit, so accept the edited
@@ -195,6 +197,7 @@ commit: { style: conventional, language: en, model: default }
         .env("AISH_MOCK_REPLY", "feat: ai suggestion")
         .env("HOME", cfg.path())
         .env("AISH_HOME", cfg.path().join("aish-home"))
+        .env_remove("VISUAL")
         .env("EDITOR", "printf '' >")
         .args(["commit"])
         .write_stdin("e\n")
